@@ -1,0 +1,125 @@
+#!/bin/bash
+#
+# Copyright (C) Microsoft Corporation. All rights reserved.
+#
+# Set hostname and DNS domain name
+# 
+
+function usage {
+  WriteError "Invalid arguments provided" ${thisscript}
+  echo "Usage: $0 hostname=Hostname [dnsdomainname=DNSDomainName]"
+}
+
+#Check Acceptibility of input Hostname (set it if valid)
+function ValidateHostname {
+   cfgExec  "hostname "$1""  warning  "Failed to set runtime hostname"  ${thisscript} 
+   hostnameExitCode=$?
+   if [ $hostnameExitCode != 0 ]
+   then
+       WriteError "Specified hostname is invalid, cannot proceed" ${thisscript}
+       exit ${hostnameExitCode}
+   fi
+}
+
+#Vars
+retcode=0
+thisscript=${0}
+distro="unknown"
+hostname=""
+dnsdomainname=""
+fqdn=""
+currentname=""
+
+#Include utilities script
+source $(dirname ${0})/utilities
+
+VALID_INPUT=0
+for arg in $@; do
+    set -- `echo ${arg} | tr '=' ' '`
+	case "$1" in
+	 hostname )
+	    hostname="${2}"
+	    VALID_INPUT=1
+	    ;;
+	 dnsdomainname )
+	    dnsdomainname="${2}"
+	    ;;
+	 * )
+	    usage
+	    exit -1
+	 ;;
+	esac
+done
+
+if [ $VALID_INPUT == 0 ]
+then
+   usage
+   exit -1
+elif [ $VALID_INPUT == 1 ]
+then
+   WriteInfo "All inputs validated" ${thisscript}
+fi
+
+#Get Distro family
+GetDistroFamily
+
+#Construct fqdn
+if [ -n "${hostname}" ] && [ -n "${dnsdomainname}" ]
+then
+   fqdn="${hostname}.${dnsdomainname}"
+else
+   fqdn="${hostname}"
+fi
+
+#Remove entries currently in /etc/hosts for this host
+WriteInfo "Removing old host entries from /etc/hosts" ${thisscript}
+currentname=`sysctl kernel.hostname |cut -f2 -d= |tr -d '[:space:]'`
+cfgExec  "sed -i".bak" '/'${currentname}'/d' /etc/hosts"  warning  "Failed to remove old hostnames from /etc/hosts"  ${thisscript} 
+
+#SetHostname
+ValidateHostname ${hostname}
+WriteInfo "Setting hostname to ${hostname}" ${thisscript}
+if [ ${distro} = "DEBIAN" ]
+then 
+   cfgExec  'echo -e "${hostname}" > "/etc/hostname"'  error  "Failed to write hostname to /etc/hostname"  ${thisscript} 
+elif [ ${distro} = "RHEL" ]
+then
+   cfgfile="/etc/sysconfig/network"
+   cfgExec  "sed -i".bak" '/HOSTNAME=/d' ${cfgfile}"  error  "Failed to purge HOSTNAME entry from ${cfgfile}"  ${thisscript} 
+   echo -e "\n" >> "${cfgfile}"
+   cfgExec  'echo -e "HOSTNAME=${hostname}" >> ${cfgfile}'  error  "Failed to write HOSTNAME entry to ${cfgfile}"  ${thisscript} 
+
+   if [ -e /etc/hostname ]
+   then
+	  cfgExec  'echo -e "${hostname}" > "/etc/hostname"'  error  "Failed to write hostname to /etc/hostname"  ${thisscript} 
+   fi
+
+elif [ ${distro} = "SUSE" ]
+then
+   cfgExec  'echo -e "${hostname}" > "/etc/HOSTNAME"'  error  "Failed to write hostname to /etc/HOSTNAME"  ${thisscript} 
+else
+    WriteError "Unable to detect Linux distribution, cannot proceed" ${thisscript}
+    exit=-1
+fi
+
+#SetDNSSearchSuffix
+if [ -n "${dnsdomainname}" ]
+then
+   WriteInfo "Configuring search and domain entries in /etc/resolv.conf" ${thisscript}
+   cfgExec  "sed -i".bak" '/^search /d' /etc/resolv.conf"  warning  "Failed to delete old search entry from resolv.conf"  ${thisscript} 
+   cfgExec  "sed -i".bak" '/^domain /d' /etc/resolv.conf"  warning  "Failed to delete old domain entry from resolv.conf"  ${thisscript}
+   echo -e "\n" >> "/etc/resolv.conf"
+   cfgExec 'echo -e "search ${dnsdomainname}" >> "/etc/resolv.conf"'  warning  "Failed to write search entry to resolv.conf"  ${thisscript} 
+   cfgExec 'echo -e "domain ${dnsdomainname}" >> "/etc/resolv.conf"'  warning  "Failed to write domain entry to resolv.conf"  ${thisscript} 
+fi
+
+
+#Validate
+currentname=`sysctl kernel.hostname |cut -f2 -d= |tr -d '[:space:]'`
+if [ ! "${currentname}" = "${hostname}" ]
+then
+   WriteError "Current hostname ${currentname} does not match expected hostname ${hostname}" ${thisscript}
+   retcode=-1
+fi
+
+exit ${retcode}

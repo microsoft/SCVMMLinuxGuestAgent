@@ -1,0 +1,75 @@
+#!/bin/bash
+#
+# Copyright (C) Microsoft Corporation. All rights reserved.
+#
+# Configure root user credentials
+# 
+
+#Variables
+retcode=0
+thisscript=${0}
+
+#Include utilities script
+source $(dirname ${0})/utilities
+
+function usage {
+  WriteError "Invalid arguments provided" ${thisscript}
+  echo "Usage: $0 pw=password [sshkey=sshkey]"
+}
+
+
+VALID_INPUT=0
+for arg in $@; do
+   ArgName=`echo ${1} |cut -f1 -d=`
+   # SSHKeys can have =. So fetching till end of line
+   ArgValue=`echo ${1} |cut -f2- -d=`
+   case "${ArgName}" in
+	 pw )
+	    pw="${ArgValue}"
+	    VALID_INPUT=1
+	    ;;
+	 sshkey )
+	    sshkey="${ArgValue}"
+	    ;;
+	esac
+   shift
+done
+
+if [ $VALID_INPUT == 0 ]
+then
+   usage
+   exit -1
+elif [ $VALID_INPUT == 1 ]
+then
+   WriteInfo "All inputs validated" ${thisscript}
+fi
+
+#Get Distro family
+GetDistroFamily
+
+
+#Set root user password
+WriteInfo "Setting root user password" ${thisscript}
+
+if [ -x "/usr/sbin/chpasswd" ]
+then 
+   cfgExec  'echo "root:${pw}" | chpasswd'  error "Failed to set root user password"  ${thisscript} 
+else
+   cfgExec  'echo "${pw}" | (passwd --stdin root)'  error "Failed to set root user password"  ${thisscript} 
+fi
+
+
+if [ -n "$sshkey" ]; then
+   GetRootHome
+   if [ -n "${roothome}" ]
+   then
+      WriteInfo "Writing ssh key to ${roothome}/.ssh/authorized_keys" ${thisscript}
+      if [ ! -d ${roothome}/.ssh ]; then
+	 cfgExec "mkdir ${roothome}/.ssh" warning "Failed to create directory ${roothome}/.ssh" ${thisscript} 
+	 cfgExec "chmod 700 ${roothome}/.ssh" warning "Failed to set access permissions on ${roothome}/.ssh" ${thisscript} 
+      fi
+      cfgExec 'echo "${sshkey}" >> ${roothome}/.ssh/authorized_keys' error "Failed to write ssh key to ${roothome}/.ssh/authorized_keys" ${thisscript} 
+      cfgExec "chmod 600 ${roothome}/.ssh/authorized_keys" warning "Failed to set access permissions on ${roothome}/.ssh/authorized_keys" ${thisscript} 
+   fi
+fi
+

@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xs:schema targetNamespace="http://www.microsoft.com/schema/linuxvmmst" 
+           xmlns:mstns="http://www.microsoft.com/schema/linuxvmmst" 
+           xmlns:linuxvmmst="http://www.microsoft.com/schema/linuxvmmst" 
+           xmlns:xs="http://www.w3.org/2001/XMLSchema" 
+           xmlns:msdata="urn:schemas-microsoft-com:xml-msdata" 
+           attributeFormDefault="qualified" 
+           elementFormDefault="qualified">
+
+  <xs:simpleType name="AddressType">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="DHCP" />
+      <xs:enumeration value="STATIC" />
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:complexType name="NetworkProperties">
+    <xs:sequence>
+        <xs:element name="StaticIP" type="linuxvmmst:StaticNetworkProperties" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="AddressType" type="linuxvmmst:AddressType" use="required"/>
+   </xs:complexType>
+  
+
+  <xs:complexType name="StaticNetworkProperties"> 
+      <xs:sequence>
+        <xs:element name="Address" type="xs:string" minOccurs="1"/>
+      </xs:sequence>
+    </xs:complexType>
+
+  <xs:element name="NameServers">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="NameServer" type="xs:string" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="Gateways">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="linuxvmmst:Gateway" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="Gateway">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Address" type="xs:string" minOccurs="0"/>
+        <xs:element name="Metric" type="xs:string" minOccurs="0"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="VNetAdapters">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="linuxvmmst:VNetAdapter" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="DNSSearchSuffixes">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="DNSSearchSuffix" type="xs:string" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="VNetAdapter">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="MACAddress" type="xs:string" minOccurs="1"/>
+        <xs:element name="IPV4Property" type="linuxvmmst:NetworkProperties" minOccurs="0"/>
+        <xs:element name="IPV6Property" type="linuxvmmst:NetworkProperties" minOccurs="0"/>
+        <xs:element ref="linuxvmmst:NameServers" minOccurs="0" maxOccurs="1"/>
+        <xs:element ref="linuxvmmst:Gateways" minOccurs="0" maxOccurs="1"/>
+        <xs:element ref="linuxvmmst:DNSSearchSuffixes" minOccurs="0" maxOccurs="1"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="Users">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="linuxvmmst:User" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  
+  <xs:complexType name="User">
+      <xs:sequence>
+        <xs:element name="Name" type="xs:string" minOccurs="0"/>
+        <xs:element name="Password" type="xs:string" minOccurs="0"/>
+        <xs:element name="SSHKey" type="xs:string" minOccurs="0"/>
+        <xs:element name="UID" type="xs:int" minOccurs="0"/>
+        <xs:element name="GroupID" type="xs:int" minOccurs="0"/>
+        <xs:element name="PrimaryGroupName" type="xs:string" minOccurs="0"/>
+        <xs:element name="SecondaryGroupName" type="xs:string" minOccurs="0"/>
+      </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="RunOnceCommand">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute name="Sequence" type="xs:int">
+        </xs:attribute>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <xs:element name="RunOnceCommands">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="linuxvmmst:RunOnceCommand" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="OSConfiguration">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="HostName" type="xs:string" minOccurs="0"/>
+        <xs:element name="DNSDomainName" type="xs:string" minOccurs="0"/>
+        <xs:element name="TimeZone" type="xs:int" minOccurs="0"/>  <!-- This will be a list of integers that we should be able to map to specific time zones in Linux-->
+        <xs:element ref="linuxvmmst:VNetAdapters" minOccurs="0" maxOccurs="1"/>
+        <xs:element ref="linuxvmmst:Users" minOccurs="0" maxOccurs="1"/>
+        <xs:element ref="linuxvmmst:RunOnceCommands" minOccurs="0" maxOccurs="1"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="LinuxOSSpecialization">                                             
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="SchemaVersion" type="xs:string" minOccurs="0"/>  
+        <xs:element name="AgentVersion" type="xs:string" minOccurs="0"/>
+        <xs:element ref="linuxvmmst:OSConfiguration" minOccurs="0" maxOccurs="1"/>
+       </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

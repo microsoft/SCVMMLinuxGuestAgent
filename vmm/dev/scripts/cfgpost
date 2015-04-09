@@ -1,0 +1,30 @@
+#!/bin/bash
+#
+# Copyright (C) Microsoft Corporation. All rights reserved.
+#
+# Perform post-configuration actions
+# 
+
+#Variables
+retcode=0
+thisscript=${0}
+
+#Include utilities script
+source $(dirname ${0})/utilities
+
+#Clear bash_history
+GetRootHome
+
+if [ -e "${roothome}" ]
+then
+   WriteInfo "Deleting ${roothome}/.bash_history" ${thisscript}
+   cfgExec  "rm ${roothome}/.bash_history --force"  warning  "Failed to delete ${roothome}/.bash_history"  ${thisscript}
+fi  
+
+for file in `ls -a /home/*/.bash_history`
+do
+   WriteInfo "Deleting ${file}" ${thisscript}
+   cfgExec  "rm "${file}" --force"  warning  "Failed to delete ${file}" ${thisscript}
+done
+
+exit ${retcode}

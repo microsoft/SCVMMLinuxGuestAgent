@@ -1,0 +1,27 @@
+#!/bin/bash
+
+#set -x
+
+# This script will run the supplied command on each of the machines
+# listed in your .pbuild file.
+
+if [ $# -lt 1 ]; then
+    echo "Usage: pbcmd <cmd>"
+    exit 1
+fi
+
+# It may appear to be extra work to write the commands to a file
+# and then execute the file, but with the various substitutions,
+# and special characters that might exist in a command, this turns
+# out to be the easiest method.
+tmpfile=`mktemp`
+
+for i in `cat ~/.pbuild | grep '^host' | awk '{ print $3 }'`
+do
+	echo "echo Running cmd on $i" >> $tmpfile
+    echo ssh $i $* >> $tmpfile
+done
+
+. $tmpfile
+
+rm $tmpfile

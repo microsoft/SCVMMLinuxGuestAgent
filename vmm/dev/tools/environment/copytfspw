@@ -1,0 +1,10 @@
+#!/bin/bash
+
+if [ -z "$WINDOWS_DOMAIN" -o -z "$WINDOWS_USERNAME" ]; then
+    echo "Error:  Please set the WINDOWS_DOMAIN and/or WINDOWS_USERNAME variables"
+    echo "in your .bashrc file before attempting to configure use this command."
+    exit 1
+fi
+
+
+sudo cp $HOME/tfprox.passwd.$WINDOWS_DOMAIN.$WINDOWS_USERNAME /opt/tfprox/etc

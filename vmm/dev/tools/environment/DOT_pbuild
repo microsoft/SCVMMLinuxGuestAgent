@@ -1,0 +1,152 @@
+#
+# Configuration file for dbuild.  This file is normally stored in ~/.pbuild,
+# but can be customized with environment variable "PBUILD" (full path).
+#
+
+#
+# Default log file location
+# With no customization, you get:  "~/"  (expanded to your home directory)
+#
+# You can customize with lines like the following:
+# logdir: ~/pbuild_logs
+# logdir_prior: ~/pbuild_logs/prior
+#
+# If specified, logdir_prior forms a logfile directory that log files are
+# moved to prior to pbuild starting up.  This allows you to save one level
+# of prior log files from pbuild.
+#
+# Be certain to create the logfile directory prior to running pbuild
+
+logdir: ~/pbuild_logs
+logdir_prior: ~/pbuild_logs/prior
+
+#
+# First-time cache settings (overridded by command line cache settings).
+#
+# What, exactly, does this do, you may ask?
+# This is most useful for automated "tf get" operations, although it works
+# in any sort of enlistment. Basically, if specified, this setting will set
+# the cache setting to the specified value and then create a marker file in
+# the build directory so this is never done again.
+#
+# This allows you to have a default cache setting that is set initially, but
+# override it at any time and have your override stick.
+#
+# With no customization, you get:  ""  (Nothing done here)
+#
+# You can customize with a line like the following:
+# initial-cache: reset debug
+initial-cache: reset debug
+
+#
+# Default cache settings if unspecified on command line
+#
+# How is this different from initial-cache, you may ask?
+# If "cache" is set, then we'll do a "make cache" on every single build.
+# The "initial-cache" setting will only do a "make cache" once in a sandbox.
+#
+# With no customization, you get:  ""  (cache settings unchanged)
+#
+# You can customize with a line like the following:
+# cache: debug
+
+#
+# Default branch to build if unspecified on command line.
+# With no customization, you get:  ""  (no branch).
+#
+# If no default branch is defined, and no branch is specified on the command
+# line, then no host entries may contain branch specifications (for backwards
+# compatibility, or to insist that a branch is specified).
+#
+# NOTE: This line must appear before all host entries to be handled properly!
+#
+# You can customize with a line like the following:
+# branch: main
+
+branch: vmm-main
+
+#
+# Systems to exclude in the build:
+# With no customization, you get:  ""
+#
+# You can customize with a line like the following:
+# exclude: sun_5.10_sparc,suse_9_32
+
+#
+# Settings that may be customized:
+# With no cusomization, you get:
+#   "DeleteLogfiles,NoDiagnoseErrors,NoLogfileBranch,NoLogfileRename,Progress,SummaryScreen,TFProxStart"
+#
+# You can customize with a line like the following:
+#
+# settings: LogfileRename
+
+settings: LogfileRename,SummaryScreen,TFProxStart,DiagnoseErrors,NoDeleteLogFiles
+
+#
+# Test settings that may be customized:
+# Attributes are controlled with "test_attributes",
+# Test names are controlled with "test_names".
+#
+# With no customization, you get all tests (no restrictions)
+#
+# You can customize with a line like the following:
+#
+# test_attributes: -slow
+# test_names: atomic,condition
+
+#
+# This rest of the file contains lines with three pieces of information per
+# line (space separated):
+#   Optional: "Host:" constant to specify that this is a host entry
+#   Key (name for referring to the entry)
+#   Host name (DNS name or IP address)
+#   Directory path on host
+#   Optional: Branch specification (to match with command line and/or default)
+#   Optional: Project (must specify branch to specify project)
+#      Project must be one of:
+#         om (for Operations Manager)
+#         cm (for Configuration Manager), or
+#         nw (for NanoWEBM)
+#      If not specified, will default to om
+
+# Old MAC hosts:
+#   10.4: scxcr-mac104-03
+#   10.5: scx-mac04
+#
+# Old Ubuntu hosts:
+#   scxcr-ub606-03
+#   scxcr64-ub606-03
+
+# Redhat 5
+#host: RHEL5x86			scxvmd-rhe5-01		~/vmm vmm-main vmm
+#host: RHEL5x64			scxvmd64-rhe5-01	~/vmm vmm-main vmm
+#
+# Redhat 6
+#host: RHEL6x86			scxvmd-rhe6-01		~/vmm vmm-main vmm
+#host: RHEL6x64			scxvmd64-rhe6-01	~/vmm vmm-main vmm
+#
+# CentOS 5
+#host: CentOS5x86		scxvmd-cent5-01		~/vmm vmm-main vmm
+#host: CentOS5x64		scxvmd64-cent5-01	~/vmm vmm-main vmm
+#
+# CentOS 6
+#host: CentOS6x86		scxvmd-cent6-01		~/vmm vmm-main vmm
+#host: CentOS6x64		scxvmd64-cent6-01	~/vmm vmm-main vmm
+#
+# SLES 10
+#host: SLES10x86                scxvmd-sle10-01         ~/vmm vmm-main vmm
+#host: SLES10x64		scxvmd64-sle10-01       ~/vmm vmm-main vmm
+#
+# SLES 11
+#host: SLES11x86		scxvmd-sle11-01         ~/vmm vmm-main vmm
+#host: SLES11x64		scxvmd64-sle11-01       ~/vmm vmm-main vmm
+#
+# Ubuntu 11.04
+#host: Ubuntu11x86		scxvmd-ubun11-01        ~/vmm vmm-main vmm
+#host: Ubuntu11x64		scxvmd64-ubun11-01      ~/vmm vmm-main vmm
+#
+# Ubuntu 12.04
+#host: Ubuntu12x86		scxvmd-ubun12-01        ~/vmm vmm-main vmm
+#host: Ubuntu12x64		scxvmd64-ubun12-01	~/vmm vmm-main vmm
+#

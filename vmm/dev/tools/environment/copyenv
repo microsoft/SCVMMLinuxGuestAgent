@@ -1,0 +1,32 @@
+#!/bin/bash
+
+#set -x
+
+# Use current user id as login id for scp
+username=$USER
+
+rm ~/env.tar
+echo "Building environment tar file..."
+(cd ~/src/configmgr/Unix/tools/environment;make)
+
+cat ~/.pbuild | grep '^host' | awk '{ print "scp ~/env.tar $username@" $3 ":~/&" }' > /tmp/sh
+
+for i in `cat ~/.pbuild | grep '^host' | awk '{ print $3 }'` 
+do
+	echo "Copying to: $i"
+	scp ~/env.tar $username@$i:~/ > /dev/null
+	if [ $? -ne 0 ]; then
+		echo "An error occured copying file to $i..."
+		exit 1
+	fi
+
+	echo "Extracting tar on: $i"
+	ssh $i tar xf env.tar 
+	if [ $? -ne 0 ]; then
+		echo "An error occured extracting tarfile on $i..."
+		exit 1
+	fi
+
+	ssh $i rm env.tar
+
+done

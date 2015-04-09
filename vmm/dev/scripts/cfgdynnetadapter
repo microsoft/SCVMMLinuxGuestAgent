@@ -1,0 +1,46 @@
+#!/bin/bash
+#
+# Copyright (C) Microsoft Corporation. All rights reserved.
+#
+# Configure dynamic network adapters
+# 
+
+#Variables
+thisscript=${0}
+dir=$(dirname ${0})
+
+#Include utilities script
+source $(dirname ${0})/utilities
+
+#Get active adapters
+if [ -x /sbin/ip ]
+then
+	iflist=`ip link show |grep -B1 link/ether |grep -v link/ether |awk '{print $2}'|tr -d ':'|tr '\n' ' '`
+else
+	iflist=`ifconfig -a |grep -i "link encap:ethernet" |awk '{print $1}'|tr '\n' ' '`
+fi
+	
+declare -a ifarr=($iflist)
+
+if [ ${#ifarr[@]} -gt 0 ]
+then 
+   for i in "${ifarr[@]}"
+   do
+	echo $i
+      macaddress=""
+      if [ `cat ${dir}/../status/definedadapters 2>/dev/null |grep -e "^${i}$" |wc -l` -eq 0 ]
+      then
+		WriteInfo "Calling network configuration script with dynamic settings for adapter ${i}" ${thisscript}
+		if [ -x /sbin/ip ]
+		then
+			macaddress=`ip link show $i|grep link/ether |awk '{print $2}'|tr '\n' ' '`
+		else
+			macaddress=`ifconfig $i|grep -i HWaddr |awk '{print $5}'|tr '\n' ' '`
+		fi
+		echo $macaddress
+	 cfgExec "${dir}/cfgnetadapter macaddress=${macaddress} ipv4addresstype=dhcp ipv6addresstype=dhcp"  warning "Errors encountered in network configuration for adapter ${i}"  ${thisscript} 
+      fi
+   done
+fi
+
+

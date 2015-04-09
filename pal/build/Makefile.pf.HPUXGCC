@@ -1,0 +1,40 @@
+# -*- mode: Makefile; -*-
+#--------------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+#--------------------------------------------------------------------------------
+# 2007-10-12
+# 
+# Overrides to the HPUX makefile when using GCC
+# 
+#--------------------------------------------------------------------------------
+
+include $(SCX_BRD)/build/Makefile.pf.posix
+
+#--------------------------------------------------------------------------------
+# Tools on this platform
+#--------------------------------------------------------------------------------
+
+# Common compiler flags (sent to compile command and link commands)
+COMMONFLAGS=-pthread -milp32
+
+# CXX Compiler flags (Redefined to include COMMONFLAGS)
+CXXFLAGS=$(COMMONFLAGS) $(CXX_WARN_FLAGS)
+
+# Link an executable
+LINK=g++ $(COMMONFLAGS) -L. -L$(TARGET_DIR)
+
+# Link a dynamic lib 
+LINK_DYNLIB = g++ -shared $(COMMONFLAGS) -L$(TARGET_DIR) 
+
+#--------------------------------------------------------------------------------
+# Link switches for this platform, per target
+#--------------------------------------------------------------------------------
+
+LDFLAGS_DYNLIB =
+LDFLAGS_EXECUTABLE =
+
+# Currently building only TAR on Solaris
+PF_KIT_FILE_SUFFIX=tar
+
+
+#-------------------------------- End of File -----------------------------------

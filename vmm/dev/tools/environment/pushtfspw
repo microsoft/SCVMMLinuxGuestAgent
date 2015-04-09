@@ -1,0 +1,21 @@
+#!/bin/bash
+
+#set -x
+
+username=$USER
+
+wincred_to_upper;
+
+if [ -z "$WINDOWS_DOMAIN" -o -z "$WINDOWS_USERNAME" ]; then
+    echo "Error:  Please set the WINDOWS_DOMAIN and/or WINDOWS_USERNAME variables"
+	echo "in your .bashrc file before attempting to configure use this command."
+	exit 1
+fi
+
+
+for i in `cat ~/.pbuild | grep '^host' | awk '{ print $3 }'` 
+do
+	echo $i
+	scp ~/tfprox.passwd.$WINDOWS_DOMAIN.$WINDOWS_USERNAME $username@$i:~/
+	ssh $i ./bin/copytfspw
+done

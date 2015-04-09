@@ -1,0 +1,674 @@
+#!/bin/sh
+
+##==============================================================================
+##
+## Get command line options that start with slash.
+##
+##==============================================================================
+
+for opt
+do
+
+  arg=`expr "x$opt" : 'x[^=]*=\(.*\)'`
+
+  case $opt in
+
+    -h | --help)
+      help=1
+      ;;
+
+    --enable-debug)
+      enable_debug=1
+      ;;
+
+    --disable-rtti)
+      disable_rtti=1
+      ;;
+
+    --disable-templates)
+      disable_templates=1
+      ;;
+
+    --enable-werror)
+      enable_werror=1
+      ;;
+
+    --enable-wchar)
+      enable_wchar=1
+      ;;
+
+    --enable-gcov)
+      enable_gcov=1
+      ;;
+
+    --disable-libpath)
+      disable_libpath=1
+      ;;
+
+    *)
+      echo "$0: unknown option:  $opt"
+      exit 1
+      ;;
+
+  esac
+done
+
+##==============================================================================
+##
+## Print the help message
+##
+##==============================================================================
+
+if [ "$help" = "1" ]; then
+
+    cat<<EOF
+
+Usage: ./configure [OPTIONS]
+
+OVERVIEW:
+
+This script configures OSCAR for building. Type the following commands.
+
+    $ ./configure
+    $ make
+
+OPTIONS:
+    -h, --help              Print this help message.
+    --enable-debug          Perform a debug build.
+    --enable-gcov           Build for use with gcov code coverage tool.
+    --disable-rtti          Disable C++ RTTI support.
+    --disable-templates     Disable C++ templates support.
+    --enable-werror         Treat warnings as errors.
+    --enable-wchar          Use 'wchar_t' character type [char].
+    --disable-libpath         Disable embedding of library search paths in
+                            binaries (shared libraries and executables).
+
+EOF
+    exit 0
+fi
+
+##==============================================================================
+##
+## The the platform, os, arch, and compiler.
+##
+##==============================================================================
+
+platform=`./tools/bin/buildtool platform`
+
+if [ "$?" != "0" ]; then
+    echo "$0: unknown platform: $platform"
+    exit 1
+fi
+
+os=`./tools/bin/buildtool os`
+arch=`./tools/bin/buildtool arch`
+compiler=`./tools/bin/buildtool compiler`
+cmarch=`./tools/bin/arch`
+
+
+##==============================================================================
+##
+## Resolve NanoWBEM Distribution Format
+##
+##==============================================================================
+
+case $os in
+    HPUX | AIX )
+        distformat=cpio
+    ;;
+
+    *)
+        distformat=tar
+    ;;
+esac
+
+
+##==============================================================================
+##
+## Resolve boot-time script name
+##
+##==============================================================================
+bootos=`./tools/bin/arch -o | tr "[A-Z]" "[a-z]"`
+
+
+
+##==============================================================================
+##
+## Resolve locations
+##
+##==============================================================================
+
+root=`pwd`
+
+scxpal_dir=`(cd $root/../../pal; pwd -P)`
+
+hostname=`./tools/bin/buildtool hostname`
+
+outputdirbase=./output/$hostname
+
+outputdir=$root/output/$hostname
+
+tmpdir=$outputdir/tmp
+
+##==============================================================================
+##
+## Create output directories.
+##
+##==============================================================================
+
+
+mkdir -p $outputdir
+
+
+mkdir -p $outputdir/bin
+mkdir -p $outputdir/lib
+mkdir -p $outputdir/obj
+mkdir -p $outputdir/tmp
+mkdir -p $outputdir/var
+mkdir -p $outputdir/var/log
+mkdir -p $outputdir/var/run
+mkdir -p $outputdir/var/nwauth
+mkdir -p $outputdir/include
+mkdir -p $tmpdir
+
+##==============================================================================
+##
+## Set macros for suppressing the linefeed produced by 'echo' command.
+##
+##==============================================================================
+
+case `echo -n xyz` in
+    -n*)
+        echon=
+        case `echo 'xyz\c'` in
+            *c*)
+                echoc=
+                ;;
+            *)
+                echoc='\c'
+                ;;
+        esac
+        ;;
+    *)
+        echon='-n'
+        echoc=
+        ;;
+esac
+
+##==============================================================================
+##
+## Attempt to find C compiler.
+##
+##==============================================================================
+
+echo $echon "checking whether C compiler is on the path... $echoc"
+
+cc=`./tools/bin/buildtool cc`
+
+if [ "$cc" = "" ]; then
+    echo "$0: failed"
+    exit 1
+fi
+
+tmp1=`echo $cc | awk '{ print $1; }'`
+tmp2=`which $tmp1`
+
+if [ -x "$tmp2" ]; then
+    echo "yes"
+else
+    echo "no"
+    exit 1
+fi
+
+##==============================================================================
+##
+## Attempt to compile and execute a simple C program
+##
+##==============================================================================
+
+echo $echon "checking whether C compiler compiles... $echoc"
+rm -f $tmpdir/cprogram
+
+cat > $tmpdir/cprogram.c <<EOF
+int main()
+{
+    return 123;
+}
+EOF
+
+( cd $tmpdir ; $cc -o cprogram cprogram.c > /dev/null 2> /dev/null )
+
+if [ "$?" = "0" ]; then
+    echo "yes"
+else
+    echo "no"
+    exit 1
+fi
+
+echo $echon "checking whether C program executes... $echoc"
+
+$tmpdir/cprogram
+
+if [ "$?" = "123" ]; then
+    echo "yes"
+else
+    echo "no"
+    exit 1
+fi
+
+rm $tmpdir/cprogram.c
+rm $tmpdir/cprogram
+
+##==============================================================================
+##
+## Check whether __FUNCTION__ macro is supported.
+##
+##==============================================================================
+
+echo $echon "checking for __FUNCTION__ macro... $echoc"
+
+rm -f $tmpdir/function
+
+cat > $tmpdir/function.c <<EOF
+#include <stdio.h>
+
+int main()
+{
+    printf("%s\n", __FUNCTION__);
+    return 0;
+}
+EOF
+
+( cd $tmpdir ; $cc -o function function.c > /dev/null 2> /dev/null )
+
+if [ "$?" = "0" ]; then
+    have_function_macro=1
+    echo "yes"
+else
+    have_function_macro=0
+    echo "no"
+fi
+
+rm -f $tmpdir/function.c
+rm -f $tmpdir/function
+
+##==============================================================================
+##
+## Check whether iconv is built-in.
+##
+##==============================================================================
+
+echo $echon "checking for built-in iconv support... $echoc"
+
+rm -f $tmpdir/iconv
+
+cat > $tmpdir/iconv.c <<EOF
+#include <iconv.h>
+
+int main()
+{
+    iconv_t iconv_ref = iconv_open("UTF-8", "UTF-16LE");
+    iconv_close(iconv_ref);
+    return 0;
+}
+EOF
+
+( cd $tmpdir ; $cc -o iconv iconv.c > /dev/null 2> /dev/null )
+
+if [ "$?" = "0" ]; then
+    iconvlib_link=
+    echo "yes"
+else
+    iconvlib_link=-liconv
+    echo "no"
+fi
+
+rm -f $tmpdir/iconv.c
+rm -f $tmpdir/iconv
+
+##==============================================================================
+##
+## Check whether iconv requires const char* for iconv source parameter.
+##
+##==============================================================================
+
+echo $echon "checking whether iconv requires const char* for iconv source param... $echoc"
+
+rm -f $tmpdir/iconv
+
+cat > $tmpdir/iconv.cpp <<EOF
+#include <iconv.h>
+
+int main()
+{
+    iconv_t iconv_ref = iconv_open("UTF-8", "UTF-16LE");
+    char* pSrc = 0;
+    size_t leftInSource = 0;
+    char* pDest = 0;
+    size_t leftInDest = 0;
+    size_t converted = iconv(iconv_ref, &pSrc, &leftInSource, &pDest, &leftInDest);
+    iconv_close(iconv_ref);
+    return 0;
+}
+EOF
+
+( cd $tmpdir ; $cc -c -o iconv.o iconv.cpp > /dev/null 2> /dev/null )
+
+if [ "$?" != "0" ]; then
+    cpp_iconv_const_charptr=1
+    echo "yes"
+else
+    cpp_iconv_const_charptr=0
+    echo "no"
+fi
+
+rm -f $tmpdir/iconv.cpp
+rm -f $tmpdir/iconv.o
+
+##==============================================================================
+##
+## Check if iconv actually supports the required conversions.
+##
+##==============================================================================
+
+echo $echon "checking if iconv support conversions from UTF-16LE <-> UTF-8 on this platform... $echoc"
+
+rm -f $tmpdir/iconvchk
+
+cat > $tmpdir/iconvchk.cpp <<EOF
+#include <iconv.h>
+
+int main()
+{
+	// Try creating conversion context for UTF-8 to UTF-16LE
+	iconv_t iconv_ref = iconv_open("UTF-8", "UTF-16LE");
+	if (iconv_ref == (iconv_t)-1)
+	{
+		iconv_ref = iconv_open("UTF-8", "UTF-16le");
+		if (iconv_ref == (iconv_t)-1)
+		{
+			return 1;
+		}
+	}
+	iconv_close(iconv_ref);
+
+	// Try creating conversion contexr for UTF-16LE to UTF-8
+    iconv_ref = iconv_open("UTF-16LE", "UTF-8");
+	if (iconv_ref == (iconv_t)-1)
+	{
+		iconv_ref = iconv_open("UTF-16le", "UTF-8");
+		if (iconv_ref == (iconv_t)-1)
+		{
+			return 2;
+		}	
+	}
+	iconv_close(iconv_ref);
+	return 0;
+}
+EOF
+cxx=`./tools/bin/buildtool cxx`
+( cd $tmpdir ; $cxx -o iconvchk $iconvlib_link iconvchk.cpp > /dev/null 2> /dev/null ; $tmpdir/iconvchk )
+
+if [ "$?" != "0" ]; then
+	# iconv failed. Handle individual cases below and fail for all others
+	if [ "$os" = "HPUX" -a "$arch" = "IA64" ]; then
+		echo "handled"
+		iconvlib_link="-I/usr/local/include -L/usr/local/lib/hpux32 -liconv"
+		libdir="$libdir /usr/local/lib/hpux32"
+	elif [ "$os" = "HPUX" -a "$arch" = "PARISC" ]; then
+		 echo "handled"
+		  iconvlib_link="-I/usr/local/include -L/usr/local/lib -liconv"
+		  libdir="$libdir /usr/local/lib"
+	else
+		echo "no"
+		exit 1
+	fi
+
+else
+	echo "yes"
+fi
+
+
+##==============================================================================
+##
+## Check for 'openssl' command.
+##
+##==============================================================================
+
+echo $echon "checking whether openssl command is on the path... $echoc"
+
+openssl=`which openssl`
+
+if [ -x "$openssl" ]; then
+    echo "yes"
+else
+    echo "no"
+    exit 1
+fi
+
+##==============================================================================
+##
+## Check for 'pkg-config' command.
+##
+##==============================================================================
+
+echo $echon "checking whether pkg-config command is on the path... $echoc"
+
+pkgconfig=`which pkg-config`
+
+if [ -x "$pkgconfig" ]; then
+    echo "yes"
+else
+    echo "no"
+    exit 1
+fi
+
+##==============================================================================
+##
+## RPM Libraries necessary to build providers.
+##
+##==============================================================================
+
+case $os in
+	LINUX )
+		rpmlibs="rpm rpmio popt"
+	;;
+
+	SUNOS )
+		rpmlibs="devinfo"
+	;;
+esac
+
+
+
+
+##==============================================================================
+##
+## Configure PAL appropriately
+##
+##==============================================================================
+
+CONFIG_ENABLE_ULINUX=""
+CONFIG_ENABLE_DEBUG=""
+
+if [ "$enable_debug" = "1" ]; then
+    CONFIG_ENABLE_DEBUG="--enable-debug"
+fi
+
+case "$cmarch" in
+    Universal* )
+        CONFIG_ENABLE_ULINUX="--enable-ulinux"
+    ;;
+esac
+
+PAL_CONFIG_QUALS="$CONFIG_ENABLE_DEBUG $CONFIG_ENABLE_ULINUX"
+( cd $scxpal_dir/build; ./configure $PAL_CONFIG_QUALS )
+
+##==============================================================================
+##
+## Create config.mak file
+##
+##==============================================================================
+
+fn=$outputdir/config.mak
+
+cat > $fn <<EOF
+# CAUTION: This file was generated by 'configure' script.
+
+include $scxpal_dir/build/config.mak
+
+CONFIG_MAK=1
+$platform=1
+PLATFORM=$platform
+OS=$os
+ARCH=$arch
+COMPILER=$compiler
+ROOT=$root
+DISTFORMAT=$distformat
+BOOTOS=$bootos
+
+CP=cp
+
+HOSTNAME=$hostname
+CMARCH=$cmarch
+OUTPUTDIR=$outputdir
+RELEASEDIR=$outputdir/release
+RELTMP=$outputdir/release_tmp
+RELTMPBIN=$outputdir/release_tmp/bin
+RELTMPETC=$outputdir/release_tmp/etc
+SRCDIR=$root/src
+LIBDIR=$outputdir/lib
+BINDIR=$outputdir/bin
+OBJDIR=$outputdir/obj
+INCDIR=$outputdir/include
+TMPDIR=$tmpdir
+OPENSSL=$openssl
+PKGCONFIG=$pkgconfig
+
+CONFIG_LIBDIR="$libdir"
+SCXPAL_DIR=$scxpal_dir
+SCXPAL_SRC=$scxpal_dir/source/code
+PAL_CONFIG_QUALS=$PAL_CONFIG_QUALS
+
+ENABLE_DEBUG=$enable_debug
+ENABLE_GCOV=$enable_gcov
+ENABLE_WERROR=$enable_werror
+ENABLE_WCHAR=$enable_wchar
+DISABLE_RTTI=$disable_rtti
+DISABLE_LIBPATH=$disable_libpath
+DISABLE_TEMPLATES=$disable_templates
+ICONVLIB_LINK=$iconvlib_link
+RPM_LIBS=$rpmlibs
+EOF
+
+echo "created $fn"
+
+##==============================================================================
+##
+## Create config.h file
+##
+##==============================================================================
+
+
+fn=$outputdir/include/config.h
+
+cat > $fn <<EOF
+/* CAUTION: This file was generated by 'configure' script. */
+#ifndef _config_h
+#define _config_h
+
+#define CONFIG_PLATFORM "$platform"
+#define CONFIG_OS "$os"
+#define CONFIG_ARCH "$arch"
+#define CONFIG_COMPILER "$compiler"
+#define CONFIG_PLATFORM_$platform
+#define CONFIG_OS_$os
+#define CONFIG_ARCH_$arch
+#define CONFIG_COMPILER_$compiler
+#define CONFIG_POSIX
+#define CONFIG_PREFIX "$prefix"
+#define CONFIG_LIBDIR "$libdir"
+#define CONFIG_INCLUDEDIR "$includedir"
+#define CONFIG_DATADIR "$datadir"
+#define CONFIG_BINDIR "$bindir"
+#define CONFIG_LOCALSTATEDIR "$localstatedir"
+#define CONFIG_SYSCONFDIR "$sysconfdir"
+#define CONFIG_PROVIDERDIR "$providerdir"
+#define CONFIG_CERTSDIR "$certsdir"
+#define CONFIG_AUTHDIR "$authdir"
+#define CONFIG_NAMESPACE "$namespace"
+#define CONFIG_HTTPPORT $httpport
+#define CONFIG_HTTPSPORT $httpsport
+#define CONFIG_TMPDIR "$tmpdir"
+EOF
+
+if [ "$enable_debug" = "1" ]; then
+    echo "#define CONFIG_ENABLE_DEBUG" >> $fn
+else
+    echo "/* #define CONFIG_ENABLE_DEBUG */" >> $fn
+fi
+
+if [ "$enable_gcov" = "1" ]; then
+    echo "#define CONFIG_ENABLE_GCOV" >> $fn
+else
+    echo "/* #define CONFIG_ENABLE_GCOV */" >> $fn
+fi
+
+if [ "$enable_werror" = "1" ]; then
+    echo "#define CONFIG_ENABLE_WERROR" >> $fn
+else
+    echo "/* #define CONFIG_ENABLE_WERROR */" >> $fn
+fi
+
+if [ "$enable_wchar" = "1" ]; then
+    echo "#define CONFIG_ENABLE_WCHAR" >> $fn
+else
+    echo "/* #define CONFIG_ENABLE_WCHAR */" >> $fn
+fi
+
+if [ "$disable_rtti" = "1" ]; then
+    echo "#define CONFIG_DISABLE_RTTI" >> $fn
+else
+    echo "/* #define CONFIG_DISABLE_RTTI */" >> $fn
+fi
+
+if [ "$disable_libpath" = "1" ]; then
+    echo "#define CONFIG_DISABLE_LIBPATH" >> $fn
+else
+    echo "/* #define CONFIG_DISABLE_LIBPATH */" >> $fn
+fi
+
+if [ "$disable_templates" = "1" ]; then
+    echo "#define CONFIG_DISABLE_TEMPLATES" >> $fn
+else
+    echo "/* #define CONFIG_DISABLE_TEMPLATES */" >> $fn
+fi
+
+if [ "$have_function_macro" = "1" ]; then
+    echo "#define CONFIG_HAVE_FUNCTION_MACRO" >> $fn
+else
+    echo "/* #define CONFIG_HAVE_FUNCTION_MACRO */" >> $fn
+fi
+
+if [ "$cpp_iconv_const_charptr" = "1" ]; then
+    echo "#define CPP_ICONV_CONST_CHARPTR" >> $fn
+else
+    echo "/* #define CPP_ICONV_CONST_CHARPTR */" >> $fn
+fi
+
+echo "#define CONFIG_SHLIBEXT \"`./tools/bin/buildtool shlibext`\"" >> $fn
+
+echo "" >> $fn
+echo "#endif /* _config_h */" >> $fn
+
+echo "created $fn"
+fn=""
+
+
+##==============================================================================
+##
+## Put platform configuration message.
+##
+##==============================================================================
+
+echo "Configured for $platform"

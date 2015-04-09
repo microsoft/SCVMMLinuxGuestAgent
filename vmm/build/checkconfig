@@ -1,0 +1,1211 @@
+#!/bin/bash
+#==================================================#
+# Check config for CM                              #
+# Version: v0.1                                    #
+# Author: graym                                    #
+#==================================================#
+
+#set -x
+if [ -f ~/.bashrc ]; then
+	. ~/.bashrc
+fi
+
+ignore_errors=0
+
+if [ $# -eq 1 ]; then
+	if [ "$1" == "-i" ]; then 
+		ignore_errors=1
+	fi
+fi
+
+
+
+#==================================================#
+#        Basic Functions for Determining OS        #
+#==================================================#
+
+VERSION=
+PATCH=
+PLATFORM=
+ARCH=
+
+SuSE_Release="/etc/SuSE-release"
+SUSE_Release="/etc/SUSE-release"
+RH_Release="/etc/redhat-release"
+FED_Release="/etc/fedora-release"
+
+
+GetARCHInternal() {
+
+	case "$PLATFORM" in
+		MacOS | Hpux)
+			ARCH=`uname -m`
+		;;
+
+		*)
+			ARCH=`uname -p`
+		;;
+	esac	
+
+	case $ARCH in
+
+		x86_64 )
+			ARCH=x64
+		;;
+
+		i386|i486|i586|i686 )
+			ARCH=x86;
+		;;
+
+		9000/*)
+			ARCH=PA
+		;;
+
+		ia64)
+			ARCH=i64
+		;;
+
+		ppc|ppc64|powerpc)
+			ARCH=ppc
+		;;
+
+	esac
+}
+
+
+GetLinuxInfo() {
+
+	OSName=`/bin/egrep -o 'Red Hat Enterprise Linux ES|Red Hat Enterprise Linux|Red Hat Enterprise Linux Server|Red Hat Enterprise Client|Red Hat Enterprise Desktop|Fedora|CentOS|Ubuntu|SUSE Linux Enterprise Desktop|SUSE Linux Enterprise Server|SUSE LINUX Enterprise Server' $1`
+
+	case $OSName in
+
+		"Red Hat Enterprise Linux Client" | "Red Hat Linux Desktop" )
+			PLATFORM=RHED
+			VERSION=`grep "$OSName" $1 | sed 's/[^0-9]*//g'`
+		;;
+
+		"Red Hat Enterprise Linux Server" | "Red Hat Enterprise Linux ES" )
+			PLATFORM=RHEL
+			if [ "$includePatchInfo" = "true" ]; then
+				VERSION=`grep "$OSName" $1 | sed  's/[^0-9]*//g'`
+			else
+				VERSION=`grep "$OSName" $1 | sed  's/\..*$//;s/[^0-9]*//g'`
+			fi
+		;;
+
+		"SUSE Linux Enterprise Desktop" )
+			PLATFORM=SLED
+			VERSION=`grep VERSION $1 | sed 's/[ \t]//g;s/.*=//'`
+			if [ "$includePatchInfo" = "true" ]; then
+				PATCH=`grep PATCH $1 | sed 's/[ \t]//g;s/.*=//'`
+			fi
+		;;
+
+		"SUSE LINUX Enterprise Server"|"SUSE Linux Enterprise Server")
+			PLATFORM=SLES
+			VERSION=`grep VERSION "$1" | sed 's/[ \t]//g;s/.*=//'`
+			if [ "$includePatchInfo" = "true" ]; then
+				PATCH=`grep PATCH $1 | sed 's/[ \t]//g;s/.*=//'`
+			fi
+		;;
+
+		"Fedora" )
+			PLATFORM=Fedora
+			VERSION=`grep "$OSName" $1 | sed 's/[^0-9]*//g'`
+		;;
+
+		"CentOS" )
+			PLATFORM=CentOS
+			VERSION=`grep "$OSName" $1 | sed 's/[^0-9]*//g'`
+		;;
+
+		"Ubuntu" )
+			PLATFORM=Ubuntu
+			VERSION=`grep "$OSName" $1 | sed 's/[^0-9]*//g'`
+		;;
+
+		* )
+			echo  "Error Unrecognized Linux OS."
+			;;
+
+		esac
+}
+
+
+
+GetARCH()
+{
+	case `uname -s` in
+
+		Linux )
+			if [ -r $SuSE_Release ]; then
+				GetLinuxInfo "$SuSE_Release"
+			elif [ -r $SUSE_Release ]; then
+				GetLinuxInfo "$SUSE_Release"
+			elif [ -r $RH_Release ]; then
+				GetLinuxInfo "$RH_Release"
+			elif [ -r $FED_Release ]; then
+				GetLinuxInfo "$FED_Release"
+			fi
+		;;
+
+		HP-UX )
+			VERSION=`uname -r`
+			PLATFORM=Hpux
+		;;
+
+		AIX )
+			VERSION=`oslevel | sed 's/\.//g;s/0//g'`
+			PLATFORM=Aix
+		;;
+
+		SunOS )
+			PLATFORM=Sol
+			VERSION=`uname -r | sed 's/[0-9]\.//'`
+		;;
+
+		Darwin )
+			PLATFORM=MacOS
+			if [ "$includePatchInfo" = "true" ]; then
+				VERSION=`sw_vers -productVersion | sed 's/[^0-9]*//g'`
+			else
+				VERSION=`sw_vers -productVersion | sed 's/\([0-9][0-9]\)\.\([0-9]\)\.\([0-9]\)/\1\2/;s/[^0-9]*//g'`
+			fi
+
+		;;
+
+		*)
+			echo "Unknown"
+			exit 0
+			;;
+
+		esac
+
+	GetARCHInternal
+
+	OS=${PLATFORM}${VERSION}${PATCH}${ARCH}
+}
+
+# Script begins here.
+GetARCH
+
+echo "*** Beginning checkconfig on `hostname` ($OS)"
+
+#==================================================#
+#              Check for GNU Make                  #
+#==================================================#
+
+echo -n "Checking Make Version...."
+
+which gmake &> /dev/null
+
+if [ $? -ne 0 ]; then
+	# if no gmake, check to see if "make" is really gmake...
+	echo "WARNING: No \"gmake\" found in path."
+
+	make -v 2> /dev/null | grep GNU &> /dev/null
+
+	if [ $? -ne 0 ]; then
+		echo "FAILED: GNUmake is not the default \"make\" in your path."
+		if [ $ignore_errors -eq 0 ]; then
+			exit 2
+		fi
+	fi
+
+	echo "OK"
+else
+	echo "OK"
+fi
+
+
+
+#==================================================#
+#              Check for pkg-config                #
+#==================================================#
+
+echo -n "Checking pkg-config...."
+
+pkgconfig=`which pkg-config`
+
+if [ $? -ne 0 ]; then
+	echo "FAILED - cannot find pkg-config in current path."
+	if [ $ignore_errors -eq 0 ]; then
+		exit 2
+	fi
+fi
+
+
+echo "OK."
+
+#==================================================#
+#              Setup Default libpath               #
+#==================================================#
+
+case $OS in
+	RHEL*x64 )
+		default_libpath=/usr/lib64
+	;;
+
+	RHEL*x86 )
+		default_libpath=/usr/lib
+	;;
+
+	Hpux* )
+		default_libpath="/usr/lib /usr/lib/hpux32 /usr/lib/hpux64"
+	;;
+
+	* )
+		default_libpath=/usr/lib
+	;;
+
+esac
+
+#==================================================#
+#                 Check OpenSSL                    #
+#==================================================#
+
+echo "Checking openssl...."
+primary_libdirs=`pkg-config --variable=libdir openssl`
+secondary_libdirs=""
+
+#==================================================#
+#              Check OpenSSL libdir                #
+#==================================================#
+
+# Verify that primary_libdirs exist...
+
+for i in "$primary_libdirs"
+do
+	if [ ! -d "$i"  ]; then
+		echo ""
+		echo "	WARNING - Invalid libdir $i for openssl provided by "
+		echo "	pkg-config --variable=libdir"
+	fi
+done
+
+# Remove any leading whitespace from lib dir.
+primary_libdirs=`echo $primary_libdirs | sed 's/^[ \t]*//'`
+
+
+#==================================================#
+#            Check OpenSSL libs                    #
+# NOTE: sometimes libdir can be supplied here too. #
+#==================================================#
+libs=`pkg-config --libs openssl`
+tmplibs=""
+
+
+#==================================================#
+#            Check OpenSSL libdir in libs          #
+#==================================================#
+# Check for wayward libpath...
+
+for i in $libs
+do
+	case $i in
+		-L* )
+			secondary_libdir=`echo $i | sed 's/-L//'`
+
+			case $OS in 
+				Hpux* )
+					if [  -d "$secondary_libdir" ]; then
+						secondary_libdirs="$secondary_libdirs $secondary_libdir"
+
+						if [ -d "$secondary_libdir/hpux32" ]; then
+							secondary_libdirs="$secondary_libdirs $secondary_libdir/hpux32"
+						fi
+
+						if [ -d "$secondary_libdir/hpux64" ]; then
+							secondary_libdirs="$secondary_libdirs $secondary_libdir/hpux64"
+						fi
+					else
+						echo ""
+						echo "	WARNING - Invalid libdir $secondary_libdir for openssl provided by "
+						echo "	pkg-config --libs"
+					fi
+
+				;;
+
+				* )
+					if [ -d "$secondary_libdir" ]; then
+						secondary_libdirs="$secondary_libdirs $secondary_libdir"
+					else
+						echo ""
+						echo "	WARNING: OpenSSL lib directory '$secondary_libdir', specifed "
+						echo "	by pkg-config using echo --libs is invalid."
+						echo "	$secondary_libdir does not exist."
+					fi
+				;;
+			esac
+		;;
+
+		-R* )
+			echo "INFO: Runtime library $i  specified for openssl"
+		;;
+
+		-Wl,+s )
+			# Ignore HPUX shared object junk
+		;;
+
+		* )
+			tmplibs="$tmplibs $i"
+		;;
+
+	esac
+done
+
+# Set libs, cleanup leading spaces...
+libs=$tmplibs
+if [ -n "$libs" ]; then
+	libs=`echo $libs | sed 's/^[ \t]*//'`
+fi
+
+#==================================================#
+#            Check OpenSSL libs                    #
+#==================================================#
+for i in $libs 
+do
+	libfound=0
+
+	lib=`echo $i | sed 's/-l/lib/;s/$/\.\*/'`
+
+	echo -n "	Checking link-line paths for $lib"
+
+# Check secondary_libdirs first.
+	for libdir in $secondary_libdirs 
+	do
+		libcnt=`ls -1 $libdir/$lib 2> /dev/null | wc -l`
+
+		if [ -z "$libcnt" ]; then
+				libcnt=0;
+		fi
+
+		if [ $libcnt -gt 0 ]; then
+			libfound=1
+			break;
+		fi
+	done
+
+	if [ $libfound -gt 0 ]; then
+		echo " OK."
+	else
+		echo " NOT FOUND."
+		echo -n "	Checking libdir paths for $lib..."
+
+		for libdir in $primary_libdirs
+		do
+			libcnt=`ls -1 $libdir/$lib 2> /dev/null | wc -l`
+
+			if [ -z "$libcnt" ]; then
+					libcnt=0;
+				fi
+
+				if [ $libcnt -gt 0 ]; then
+					libfound=1
+					break;
+				fi
+		done
+
+		if [ $libfound -gt 0 ]; then
+			echo " OK."
+		else
+			echo "NOT FOUND."
+			echo "	Checking system default libpaths for $lib..."
+
+			for libdir in $default_libpath
+			do
+				libcnt=`ls -1 $libdir/$lib 2> /dev/null | wc -l`
+
+				if [ -z "$libcnt" ]; then
+						libcnt=0;
+					fi
+
+				if [ $libcnt -gt 0 ]; then
+					libfound=1
+					break;
+				fi
+			done
+		fi
+	fi
+
+	if [ $libfound = 0 ]; then
+		echo "ERROR: Cannot locate OpenSSL library $i in the following directories: "
+		echo "$secondary_libdirs $primary_directories."
+		if [ $ignore_errors -eq 0 ]; then
+			exit 2
+		fi
+	fi
+
+done
+
+#==================================================#
+#            Check OpenSSL cflags                  #
+#==================================================#
+cflags=`pkg-config --cflags openssl`
+
+if [ -z "$cflags" ]; then
+	if [ ! -d /usr/include/openssl ]; then
+		echo "	ERROR: OpenSSL include path not specified via --cflags"
+		echo "	and not found in /usr/include.
+		if [ $ignore_errors -eq 0 ]; then
+			exit 2
+		fi
+	fi
+else
+	opensslincdir=`echo $cflags | sed 's/-I//g'`
+fi
+
+incdirfound=0
+for incdir in $opensslincdir 
+do
+	if [ -d $incdir/openssl ]; then
+		echo "OpenSSL include directory found in $incdir"
+		incdirfound=1
+	fi
+done
+
+if [ "$incdirfound" -eq "0" ]; then
+	if [ ! -d /usr/include/openssl ]; then
+		echo "	WARNING: OpenSSL include path not specified via --cflags"
+		echo "	but WAS found in /usr/include.
+	else
+		echo "ERROR: Cannot locate OpenSSL include directory in $opensslincdir."
+		if [ $ignore_errors -eq 0 ]; then
+			exit 2
+		fi
+	fi
+fi
+
+echo -n "Checking for Supported Build Platform...."
+
+#set -x
+
+includePatchInfo="true"
+GetARCH
+OSPATCH=$OS
+includePatchInfo="false"
+GetARCH
+
+AIX53_OS_Release="5300-06-05-0806"
+AIX61_OS_Release="6100-01-01-0823"
+AIX71_OS_Release="7100-00-01-1037"
+
+HPUX11_23i64_BaseOS_Release="B.11.23"
+HPUX11_23i64_BaseAux_Release="B.11.23.0706"
+HPUX11_23PA_BaseOS_Release="B.11.23.0706"
+HPUX11_31i64_OS_Release="B.11.31.0709"
+HPUX11_31PA_OS_Release="B.11.31.0709"
+
+SOL10_X86_OS_Release="s10x_u3wos_10"
+SOL10_SPARC_OS_Release="s10s_u2wos_09a"
+SOL9_SPARC_OS_Release="s9s_u9wos_06b" 
+
+
+case $OSPATCH in
+
+    Aix5*)
+	    release=`oslevel -s`
+        if [ "$release" != $AIX53_OS_Release ]; then
+            echo "FAILED"
+            echo "	$release is not a supported build platform, required version: $AIX53_OS_Release."
+			if [ $ignore_errors -eq 0 ]; then
+				exit 3
+			fi
+        fi
+    ;;
+
+    Aix6*)
+	    release=`oslevel -s`
+        if [ "$release" != $AIX61_OS_Release ]; then
+            echo "FAILED"
+            echo "	$release is not a supported build platform, required version: $AIX61_OS_Release."
+			if [ $ignore_errors -eq 0 ]; then
+				exit 3
+			fi
+        fi
+    ;;
+
+    Aix7*)
+	release=`oslevel -s`
+        if [ "$release" != $AIX71_OS_Release ]; then
+            echo "FAILED"
+            echo "	$release is not a supported build platform, required version: $AIX71_OS_Release."
+			if [ $ignore_errors -eq 0 ]; then
+				exit 3
+			fi
+        fi
+    ;;
+    
+    HpuxB.11.23i64)
+	    BaseOS=`swlist | grep HPUXBaseOS | awk '{ print $2 }'`
+	    BaseAux=`swlist | grep HPUXBaseAux | awk '{ print $2 }'`
+
+        if [ "$BaseOS" != $HPUX11_23i64_BaseOS_Release -o "$BaseAux" != $HPUX11_23i64_BaseAux_Release ]; then
+            echo "FAILED"
+            echo "	HPUXBaseOS: $BaseOS, HPUXBaseAux: $BaseAux is not a supported build platform, required versions: BaseOS: $HPUX11_23i64_BaseOS_Release, BaseAux: $HPUX11_23i64_BaseAux_Release"
+			if [ $ignore_errors -eq 0 ]; then
+				exit 3
+			fi
+        fi
+    ;;
+
+    HpuxB.11.23PA)
+	    BaseOS=`swlist | grep HPUX11i-OE | awk '{ print $2 }'`
+
+        if [ "$BaseOS" != $HPUX11_23PA_BaseOS_Release ]; then
+            echo "FAILED"
+            echo "	HPUX: $BaseOS is not a supported build platform, required version: $HPUX11_23PA_BaseOS_Release"
+			if [ $ignore_errors -eq 0 ]; then
+				exit 3
+			fi
+        fi
+    ;;
+
+    HpuxB.11.31i64)
+	    BaseOS=`swlist | grep HPUX11i | awk '{ print $2 }'`
+        if [ "$BaseOS" != $HPUX11_31i64_OS_Release ]; then
+            echo "FAILED"
+            echo "	HPUX: $BaseOS is not a supported build platform, required version: $HPUX11_31i64_OS_Release"
+			if [ $ignore_errors -eq 0 ]; then
+				exit 3
+			fi
+        fi
+    ;;
+
+    HpuxB.11.31PA)
+	    BaseOS=`swlist | grep HPUX11i | awk '{ print $2 }'`
+        if [ "$BaseOS" != $HPUX11_31PA_OS_Release ]; then
+            echo "FAILED"
+            echo "	HPUX: $BaseOS is not a supported build platform, required version: $HPUX11_31PA_OS_Release"
+			if [ $ignore_errors -eq 0 ]; then
+				exit 3
+			fi
+        fi
+    ;;
+
+    RHEL4*)
+        if [ "$OSPATCH" != "RHEL4x86" -a "$OSPATCH" != "RHEL4x64" ]; then
+            echo "FAILED"
+            echo "	$OSPATCH is not a supported build platform, required version: 4.0."
+			if [ $ignore_errors -eq 0 ]; then
+				exit 3
+			fi
+        fi
+    ;;
+
+    RHEL5*)
+        if [ "$OSPATCH" != "RHEL5x86" -a "$OSPATCH" != "RHEL5x64" ]; then
+            echo "FAILED"
+            echo "	$OSPATCH is not a supported build platform, required version: 5.0."
+			if [ $ignore_errors -eq 0 ]; then
+				exit 3
+			fi
+        fi
+    ;;
+
+    RHEL6*)
+        if [ "$OSPATCH" != "RHEL60x86" -a "$OSPATCH" != "RHEL60x64" ]; then
+            echo "FAILED"
+            echo "	$OSPATCH is not a supported build platform, required version: 6.0."
+			if [ $ignore_errors -eq 0 ]; then
+				exit 3
+			fi
+        fi
+    ;;
+
+    
+    SLES9*)
+        if [ "$OSPATCH" != "SLES94x86" ]; then
+            echo "FAILED"
+            echo "	$OSPATCH is not a supported build platform, required version: 9.4."
+			if [ $ignore_errors -eq 0 ]; then
+				exit 3
+			fi
+        fi
+    ;;
+    
+    SLES10*)
+        if [ "$OSPATCH" != "SLES101x86" -a "$OSPATCH" != "SLES101x64" ]; then
+            echo "FAILED"
+            echo "	$OSPATCH is not a supported build platform, required version: 10 SP1."
+			if [ $ignore_errors -eq 0 ]; then
+				exit 3
+			fi
+        fi
+    ;;
+
+    
+    SLES11*)
+        if [ "$OSPATCH" != "SLES110x86" -a "$OSPATCH" != "SLES110x64" ]; then
+            echo "FAILED"
+            echo "	$OSPATCH is not a supported build platform, required version: 11."
+			if [ $ignore_errors -eq 0 ]; then
+				exit 3
+			fi
+        fi
+    ;;
+
+    Sol9sparc)
+	    release=`grep "Solaris" /etc/release | sed 's/HW//' | awk '{ print $4}'`
+	    if [ "$release" != "$SOL9_SPARC_OS_Release" ]; then
+		    echo "FAILED"
+		    echo "	$release is not a supported build platform, required version: s9s_u9wos_06b"
+			if [ $ignore_errors -eq 0 ]; then
+				exit 3
+			fi
+	    fi
+    ;;
+    
+    
+    Sol10x86 )
+	    release=`grep "Solaris" /etc/release | awk '{ print $4}'`
+	    if [ "$release" != $SOL10_X86_OS_Release ]; then
+		    echo "FAILED"
+		    echo "	$release is not a supported build platform, required version: $SOL10_X86_OS_Release"
+			if [ $ignore_errors -eq 0 ]; then
+				exit 3
+			fi
+	    fi
+    ;;
+
+    Sol10sparc )
+	    release=`grep "Solaris" /etc/release | sed 's/Oracle//'| awk '{ print $4}'`
+	    if [ "$release" != $SOL10_SPARC_OS_Release ]; then
+		    echo "FAILED"
+		    echo "	$release is not a supported build platform, required version: $SOL10_SPARC_OS_Release"
+			if [ $ignore_errors -eq 0 ]; then
+				exit 3
+			fi
+	    fi
+    ;;
+
+    *)
+        echo "FAILED"
+        echo "Unknown platform." 
+        exit 3
+    ;;
+
+    
+esac
+
+echo "Supported"
+
+
+#==================================================#
+#            Check Compiler Versions               #
+#==================================================#
+
+echo "Checking for compilers & related packages...."
+
+#set -x
+
+# AIX 5.3
+AIX53_CXX_COMPILER_VER="9.0.0.6"
+AIX53_C_LIBRARY_VER="5.3.0.65"
+AIX53_OPENSSL_LIBRARY_VER="0.9.8.4"
+AIX53_PAM_LIBRARY_VER="5.3.0.65"
+
+# AIX 6.1
+AIX61_CXX_COMPILER_VER="9.0.0.6"
+AIX61_C_LIBRARY_VER="6.1.1.1"
+AIX61_OPENSSL_LIBRARY_VER="0.9.8.4"
+AIX61_PAM_LIBRARY_VER="6.1.1.1"
+
+# SOLARIS 9 SPARC
+SOL9SPARC_PKGS=(SPROcpl SUNWlibC SUNWlibms SMCosslg SUNWcsl)
+SOL9SPARC_PKG_VERSIONS=(12.0,REV=2007.05.03 5.9,REV=2002.03.18 5.9,REV=2001.12.10 any any)
+
+# SOLARIS 10 SPARC
+SOL10SPARC_PKGS=(SPROcpl SUNWlibC SUNWlibms SUNWlibmsr SUNWcslr SUNWcsl SUNWopenssl-libraries SUNWcsr)
+SOL10SPARC_PKG_VERSIONS=(12.0,REV=2007.05.03 5.10,REV=2004.12.22 5.10,REV=2004.11.23 5.10,REV=2004.11.23 11.10.0,REV=2005.01.21.15.53 11.10.0,REV=2005.01.21.15.53 any any)
+
+# SOLARIS 10 x86
+SOL10X86_PKGS=(SPROcpl SUNWlibC SUNWlibmsr SUNWcsl SUNWcslr SUNWopenssl-libraries SUNWcsr)
+SOL10X86_PKG_VERSIONS=(12.0,REV=2007.05.03 5.10,REV=2004.12.20 5.10,REV=2004.12.18 11.10.0,REV=2005.01.21.16.34 11.10.0,REV=2005.01.21.16.34 any any)
+
+# Hpux 11.23 i64
+HpuxB1123i64_CXX_COMPILER_VER="aCC: HP C/aC++ B3910B A.06.25 [Nov 30 2009]"
+HpuxB1123i64_OPENSSL_VER="A.00.09.07l.003"
+
+# Hpux 11.23 PA-RISC
+HpuxB1123PA_CXX_COMPILER_VER="aCC: HP ANSI C++ B3910B A.03.77"
+HpuxB1123PA_OPENSSL_VER="A.00.09.07l.003"
+HpuxB1123PA_CORESHLIB_Ver="B.11.23"
+
+# Hpux 11.31 i64
+HpuxB1131i64_CXX_COMPILER_VER="CC: HP C/aC++ B3910B A.06.15 [May 16 2007]"
+HpuxB1131i64_OPENSSL_VER="A.00.09.08d.002"
+HpuxB1131i64_CORESHLIB_Ver="B.11.31"
+
+# Hpux 11.31 PA-RISC
+HpuxB1131PA_CXX_COMPILER_VER="aCC: HP ANSI C++ B3910B A.03.90"
+HpuxB1131PA_OPENSSL_VER="A.00.09.08d.002"
+HpuxB1131PA_CORESHLIB_Ver="B.11.31"
+
+case $OS in
+
+    Aix5*)
+        # Check C++ Compiler version
+        compiler_version=`lslpp -l xlC.rte | grep xlC.rte | awk '{ print $2 }'`
+		echo -n "  C++ Compiler version..."
+        if [ "$compiler_version" != "$AIX53_CXX_COMPILER_VER" ]; then
+			echo "FAILED"
+			echo "    C++ Compiler version $compiler_version is not supported."
+			echo "	  Required Version: $AIX53_CXX_COMPILER_VER."
+			if [ $ignore_errors -eq 0 ]; then
+				exit 4
+			fi
+		else
+			echo "OK"
+        fi
+
+        # Check C library version
+        clib_version=`lslpp -l bos.rte.libc | grep bos.rte.libc | awk '{ print $2 }'`
+		echo -n "  C library version..."
+        if [ "$clib_version" != "$AIX53_C_LIBRARY_VER" ]; then
+			echo "FAILED"
+			echo "		C Library version $clib_version is not supported."
+			echo "		Required Version: $AIX53_C_LIBRARY_VER."
+			if [ $ignore_errors -eq 0 ]; then
+				exit 4
+			fi
+		else
+			echo "OK"
+        fi
+
+        # Check OpenSSL version
+        # added uniq is because this call can return multiple lines with same info.
+        openssl_version=`lslpp -l openssl.base | grep openssl.base | awk '{ print $2 }' | uniq`
+		echo -n "  OpenSSL library version..."
+        if [ "$openssl_version" != "$AIX53_OPENSSL_LIBRARY_VER" ]; then
+			echo "FAILED"
+			echo "		OpenSSL library version $openssl_version is not supported."
+			echo "		Required Version: $AIX53_OPENSSL_LIBRARY_VER."
+			if [ $ignore_errors -eq 0 ]; then
+				exit 4
+			fi
+		else
+			echo "OK"
+        fi
+
+        # Check PAM version
+        pam_version=`lslpp -l bos.rte.security | grep bos.rte.security | awk '{ print $2 }' | uniq`
+		echo -n "  PAM library version..."
+        if [ "$pam_version" != "$AIX53_PAM_LIBRARY_VER" ]; then
+			echo "FAILED"
+			echo "		PAM library version $pam_version is not supported."
+			echo "		Required Version: $AIX53_PAM_LIBRARY_VER."
+			if [ $ignore_errors -eq 0 ]; then
+				exit 4
+			fi
+		else
+			echo "OK"
+        fi
+    ;;
+
+    Aix6*)
+        # Check C++ Compiler version
+        compiler_version=`lslpp -l xlC.rte | grep xlC.rte | awk '{ print $2 }'`
+		echo -n "  C++ Compiler version..."
+        if [ "$compiler_version" != "$AIX61_CXX_COMPILER_VER" ]; then
+			echo "FAILED"
+			echo "    C++ Compiler version $compiler_version is not supported."
+			echo "	  Required Version: $AIX61_CXX_COMPILER_VER."
+			if [ $ignore_errors -eq 0 ]; then
+				exit 4
+			fi
+		else
+			echo "OK"
+        fi
+
+        # Check C library version
+        clib_version=`lslpp -l bos.rte.libc | grep bos.rte.libc | awk '{ print $2 }' | uniq`
+		echo -n "  C library version..."
+        if [ "$clib_version" != "$AIX61_C_LIBRARY_VER" ]; then
+			echo "FAILED"
+			echo "		C Library version $clib_version is not supported."
+			echo "		Required Version: $AIX61_C_LIBRARY_VER."
+			if [ $ignore_errors -eq 0 ]; then
+				exit 4
+			fi
+		else
+			echo "OK"
+        fi
+
+        # Check OpenSSL version
+        # added uniq is because this call can return multiple lines with same info.
+        openssl_version=`lslpp -l openssl.base | grep openssl.base | awk '{ print $2 }' | uniq`
+		echo -n "  OpenSSL library version..."
+        if [ "$openssl_version" != "$AIX61_OPENSSL_LIBRARY_VER" ]; then
+			echo "FAILED"
+			echo "		OpenSSL library version $openssl_version is not supported."
+			echo "		Required Version: $AIX61_OPENSSL_LIBRARY_VER."
+			if [ $ignore_errors -eq 0 ]; then
+				exit 4
+			fi
+		else
+			echo "OK"
+        fi
+
+        # Check PAM version
+        pam_version=`lslpp -l bos.rte.security | grep bos.rte.security | awk '{ print $2 }' | uniq`
+		echo -n "  PAM library version..."
+        if [ "$pam_version" != "$AIX61_PAM_LIBRARY_VER" ]; then
+			echo "FAILED"
+			echo "		PAM library version $pam_version is not supported."
+			echo "		Required Version: $AIX61_PAM_LIBRARY_VER."
+			if [ $ignore_errors -eq 0 ]; then
+				exit 4
+			fi
+		else
+			echo "OK"
+        fi
+    ;;
+
+	HpuxB.11.23i64)
+		compiler_version=`aCC -V 2>&1`
+		echo -n "C++ Compiler version..."
+		if [ "$compiler_version" != "$HpuxB1123i64_CXX_COMPILER_VER" ]; then
+			echo "FAILED"
+			echo "	C++ Compiler version $compiler_version is not supported."
+			echo "	Required Version: $HpuxB1123i64_CXX_COMPILER_VER."
+			if [ $ignore_errors -eq 0 ]; then
+				exit 4
+			fi
+		else
+			echo "OK"
+		fi
+        
+        # Check to see if OpenSSL is installed
+        swlist -l product HPUXBaseAux.openssl &> /dev/null
+
+        if [ $? -eq 0 ]; then 
+            openssl_version=`swlist -l product HPUXBaseAux.openssl | grep openssl | awk '{ print $2 }'`
+            echo -n "Checking for OpenSSL..."
+            if [ -z "$openssl_version" -o "$openssl_version" != "$HpuxB1123i64_OPENSSL_VER" ]; then
+                echo "FAILED"
+                echo "	OpenSSL version: $openssl_version is not supported."
+                echo "	Required Version: $HpuxB1123i64_OPENSSL_VER."
+                if [ $ignore_errors -eq 0 ]; then
+                    exit 4
+                fi
+            else
+                echo "OK"
+            fi
+        else
+            echo "FAILED"
+            echo "    OpenSSL is not currently installed."
+            echo "    Required product: HPUXBaseAux.openssl, Required Version: $HpuxB1123i64_OPENSSL_VER"."
+            if [ $ignore_errors -eq 0 ]; then
+                exit 4
+            fi
+        fi
+
+		pam_support=`swlist -R OS-Core.UX2-CORE`
+		echo -n "Checking for PAM Support..."
+		if [ -z "$pam_support" ]; then
+			echo "FAILED"
+			echo "	PAM Support, OS-Core.UX2-CORE is required, but not found."
+			if [ $ignore_errors -eq 0 ]; then
+				exit 4
+			fi
+		else
+			echo "OK"
+		fi
+	;;
+
+    HpuxB.11.23PA)
+
+		compiler_version=`aCC -V 2>&1`
+		echo -n "C++ Compiler version..."
+		if [ "$compiler_version" != "$HpuxB1123PA_CXX_COMPILER_VER" ]; then
+			echo "FAILED"
+			echo "	C++ Compiler version $compiler_version is not supported."
+			echo "	Required Version: $HpuxB1123PA_CXX_COMPILER_VER."
+			if [ $ignore_errors -eq 0 ]; then
+				exit 4
+			fi
+		else
+			echo "OK"
+		fi
+
+        # Check to see if OpenSSL is installed
+		swlist -l product HPUXBaseAux.openssl &> /dev/null
+
+        if [ $? -eq 0 ]; then
+            openssl_version=`swlist -l product HPUXBaseAux.openssl | grep openssl | awk '{ print $2 }'`
+            echo -n "Checking for OpenSSL..."
+            if [ -z "$openssl_version" -o "$openssl_version" != "$HpuxB1123PA_OPENSSL_VER" ]; then
+                echo "FAILED"
+                echo "	OpenSSL version: $openssl_version is not supported."
+                echo "	Required Version: $HpuxB1131PA_OPENSSL_VER."
+                if [ $ignore_errors -eq 0 ]; then
+                    exit 4
+                fi
+            else
+                echo "OK"
+            fi
+        else
+            echo "FAILED"
+            echo "    OpenSSL is not currently installed."
+            echo "    Required product: HPUXBaseAux.openssl, Required Version: $HpuxB1123PA_OPENSSL_VER."
+            if [ $ignore_errors -eq 0 ]; then
+                exit 4
+            fi
+        fi
+
+		core_shlibs=`swlist -R OS-Core.MinimumRuntime.CORE-SHLIBS | grep OS-Core.MinimumRuntime.CORE-SHLIBS | awk '{ print $2 }'`
+		echo -n "Checking for CORE-SHLIBS Support..."
+		if [ -z "$core_shlibs" ]; then
+			echo "FAILED"
+			echo "	Core-SHLIBS Support, OS-Core.CORE-SHLIBS is required, but not found."
+			if [ $ignore_errors -eq 0 ]; then
+				exit 4
+			fi
+		elif [ "$core_shlibs" != "$HpuxB1123PA_CORESHLIB_Ver" ]; then
+			echo "FAILED"
+			echo "		$core_shlibs is not a supported version."
+			echo "		Required version: $HpuxB1123PA_CORESHLIB_Ver"
+			if [ $ignore_errors -eq 0 ]; then
+				exit 4
+			fi
+		else
+			echo "OK"
+		fi
+	;;
+
+	HpuxB.11.31i64)
+		compiler_version=`aCC -V 2>&1`
+		echo -n "C++ Compiler version..."
+		if [ "$compiler_version" != "$HpuxB1131i64_CXX_COMPILER_VER" ]; then
+			echo "FAILED"
+			echo "	C++ Compiler version $compiler_version is not supported."
+			echo "	Required Version: $HpuxB1131i64_CXX_COMPILER_VER."
+			if [ $ignore_errors -eq 0 ]; then
+				exit 4
+			fi
+		else
+			echo "OK"
+		fi
+
+        # Check to see if OpenSSL is installed.
+		swlist -l product SysMgmtMin.openssl &> /dev/null
+
+        if [ $? -eq 0 ]; then
+            openssl_version=`swlist -l product SysMgmtMin.openssl | grep openssl | awk '{ print $2 }'`
+            echo -n "Checking for OpenSSL..."
+            if [ -z "$openssl_version" -o "$openssl_version" != "$HpuxB1131i64_OPENSSL_VER" ]; then
+                echo "FAILED"
+                echo "	OpenSSL version: $openssl_version is not supported."
+                echo "	Required Version: $HpuxB1131i64_OPENSSL_VER."
+                if [ $ignore_errors -eq 0 ]; then
+                    exit 4
+                fi
+            else
+                echo "OK"
+            fi
+        else
+            echo "FAILED"
+            echo "    OpenSSL is not currently installed."
+            echo "    Required product: SysMgmtMin.openssl, Required Version: $HpuxB1131i64_OPENSSL_VER"."
+            if [ $ignore_errors -eq 0 ]; then
+                exit 4
+            fi
+        fi
+
+		pam_support=`swlist -R OS-Core.MinimumRuntime.CORE2-SHLIBS`
+		echo -n "Checking for PAM Support..."
+		if [ -z "$pam_support" ]; then
+			echo "FAILED"
+			echo "	PAM Support is required \(OS-Core.UX2-CORE\), but not found."
+			if [ $ignore_errors -eq 0 ]; then
+				exit 4
+			fi
+		else
+			echo "OK"
+		fi
+	;;
+
+	HpuxB.11.31PA)
+		compiler_version=`aCC -V 2>&1`
+		echo -n "C++ Compiler version..."
+		if [ "$compiler_version" != "$HpuxB1131PA_CXX_COMPILER_VER" ]; then
+			echo "FAILED"
+			echo "	C++ Compiler version $compiler_version is not supported."
+			echo "	Required Version: $HpuxB1131PA_CXX_COMPILER_VER."
+			if [ $ignore_errors -eq 0 ]; then
+				exit 4
+			fi
+		else
+			echo "OK"
+		fi
+
+        echo -n "Checking for OpenSSL..."
+
+        # Check to see if OpenSSL is actually installed.
+		swlist -l product openssl &> /dev/null
+
+        if [ $? -eq 0 ]; then 
+            openssl_version=`swlist -l product openssl | grep openssl | awk '{ print $2 }'`
+            if [ -z "$openssl_version" -o "$openssl_version" != "$HpuxB1131PA_OPENSSL_VER" ]; then
+                echo "FAILED"
+                echo "	OpenSSL version: $openssl_version is not supported."
+                echo "	Required Version: $HpuxB1131PA_OPENSSL_VER."
+                if [ $ignore_errors -eq 0 ]; then
+                    exit 4
+                fi
+            else
+                echo "OK"
+            fi
+        else
+            echo "FAILED"
+            echo "    OpenSSL is not currently installed."
+            echo "    Required product: OpenSSL.openssl, Required Version: $HpuxB1131PA_OPENSSL_VER."
+            if [ $ignore_errors -eq 0 ]; then
+                exit 4
+            fi
+        fi
+
+		core_shlibs=`swlist -R OS-Core.MinimumRuntime.CORE-SHLIBS | grep OS-Core.MinimumRuntime.CORE-SHLIBS | awk '{ print $2 }'`
+		echo -n "Checking for CORE-SHLIBS Support..."
+		if [ -z "$core_shlibs" ]; then
+			echo "FAILED"
+			echo "	Core-SHLIBS Support is required \(OS-Core.CORE-SHLIBS\), but not found."
+			if [ $ignore_errors -eq 0 ]; then
+				exit 4
+			fi
+		elif [ "$core_shlibs" != "$HpuxB1131PA_CORESHLIB_Ver" ]; then
+			echo "FAILED"
+			echo "		$core_shlibs is not a supported version."
+			echo "		Required version: $HpuxB1123PA_CORESHLIB_Ver"
+			if [ $ignore_errors -eq 0 ]; then
+				exit 4
+			fi
+		else
+			echo "OK"
+		fi
+	;;
+
+    Sol*)
+		case $OS in 
+
+			Sol9sparc )
+				echo "Checking SOL9Sparc Pkgs..."
+				SOL_PKGS=("${SOL9SPARC_PKGS[@]}")
+				SOL_PKG_VERSIONS=("${SOL9SPARC_PKG_VERSIONS[@]}")
+			;;
+
+			Sol10x86 )
+				echo "Checking SOL10x86 Pkgs..."
+				SOL_PKGS=("${SOL10X86_PKGS[@]}")
+				SOL_PKG_VERSIONS=("${SOL10X86_PKG_VERSIONS[@]}")
+			;;
+
+			Sol10sparc )
+				echo "Checking SOL10Sparc Pkgs..."
+				SOL_PKGS=("${SOL10SPARC_PKGS[@]}")
+				SOL_PKG_VERSIONS=("${SOL10SPARC_PKG_VERSIONS[@]}")
+			;;
+
+			*)
+				echo "FAILED: Unrecognized Solaris version."
+				exit 5
+			;;
+		esac
+
+		for (( i = 0 ; i < ${#SOL_PKGS[@]} ; i++ )); do
+			echo -n "	Checking Package: ${SOL_PKGS[$i]}..."
+
+			pkginfo -q ${SOL_PKGS[$i]} 
+
+			if [ $? -ne 0 ]; then
+			echo "FAILED"
+				echo "		Required package: ${SOL_PKGS[$i]} was not installed."
+				if [ $ignore_errors -eq 0 ]; then
+					exit 4
+				else
+					continue
+				fi
+			fi
+
+			# Can skip version check, package is installed.
+			if [ "${SOL_PKG_VERSIONS[$i]}" == "any" ]; then
+				echo "OK"
+				continue
+			fi
+
+			# Easier to just run the whole command again...
+			pkgver=`pkginfo -x ${SOL_PKGS[$i]} | sed '1d' |  awk '{ print $2 }'`
+
+			if [ "$pkgver" != "${SOL_PKG_VERSIONS[$i]}" ]; then
+				echo "FAILED"
+				echo "		$pkgver is not a supported version."
+				echo "			Required version: ${SOL_PKG_VERSIONS[$i]}"
+				if [ $ignore_errors -eq 0 ]; then
+					exit 4
+				fi
+			else
+				echo "OK"
+			fi
+
+		done
+	;;
+
+esac
+
+#==================================================#
+#            Check Required Patches                #
+#==================================================#
+
+echo "Checking for required patches...."
+
+
+SOL10SPARC_REQ_PATCHES="117463-05 119254-65 124861-07 124863-05 120011-14"
+SOLX1086_REQ_PATCHES="117463-05 119254-34 124861-07 124863-05"
+SOL9SPARC_REQ_PATCHES="112960-48 124861-07 124863-05"
+SOL10X86_REQ_PATCHES="117464-04 126498-05 124864-03"
+
+case $OS in
+
+    HpuxB*)
+		echo "	No required patches currently required."
+	;;
+
+	Sol* )
+		case $OS in 
+			Sol9sparc )
+				SOLARIS_REQ_PATCHES=$SOL9SPARC_REQ_PATCHES
+			;;
+
+			Sol10x86 )
+				SOLARIS_REQ_PATCHES=$SOL10X86_REQ_PATCHES
+			;;
+
+			Sol10sparc )
+				SOLARIS_REQ_PATCHES=$SOL10SPARC_REQ_PATCHES
+			;;
+
+			*)
+				echo "FAILED: Unrecognized Solaris version."
+				exit 5
+			;;
+		esac
+
+		for i in $SOLARIS_REQ_PATCHES
+		do
+			echo -n "	Checking for Patch $i..."
+			patch=`showrev -p | grep "Patch: $i"`;
+			if [ -z "$patch" ]; then
+				echo "MISSING"
+				if [ $ignore_errors -eq 0 ]; then
+					exit 5
+				fi
+			else
+				echo "OK"
+			fi
+		done
+	;;
+
+esac
+
+echo "*** checkconfig on `hostname` complete."

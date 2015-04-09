@@ -1,0 +1,213 @@
+#/bin/bash
+
+#********************************************************
+#*                                                      *
+#*   Copyright (C) Microsoft. All rights reserved.      *
+#*                                                      *
+#********************************************************
+
+
+#Debugging Help
+#clear
+#set -x
+
+VERSION=
+PATCH=
+PLATFORM=
+ARCH=
+
+SuSE_Release="/etc/SuSE-release"
+SUSE_Release="/etc/SUSE-release"
+RH_Release="/etc/redhat-release"
+FED_Release="/etc/fedora-release"
+Ubuntu_Release="/etc/issue"
+
+GetARCH() {
+
+	case "$PLATFORM" in
+		MacOS | Hpux)
+			ARCH=`uname -m`
+		;;
+
+		*)
+			ARCH=`uname -p`
+		;;
+	esac	
+
+	case $ARCH in
+
+		x86_64 )
+			ARCH=x64
+		;;
+
+		i386|i486|i586|i686 )
+			ARCH=x86;
+		;;
+
+		9000/*)
+			ARCH=PA
+		;;
+
+		ia64)
+			ARCH=i64
+		;;
+
+		ppc|ppc64|powerpc)
+			ARCH=ppc
+		;;
+
+	esac
+}
+
+
+GetLinuxInfo() {
+
+	OSName=`/bin/egrep -o 'Red Hat Enterprise Linux ES|Red Hat Enterprise Linux|Red Hat Enterprise Linux Server|Red Hat Enterprise Client|Red Hat Enterprise Desktop|Fedora|CentOS|Ubuntu|SUSE Linux Enterprise Desktop|SUSE Linux Enterprise Server|SUSE LINUX Enterprise Server' $1`
+
+	case $OSName in
+
+		"Red Hat Enterprise Linux Client" | "Red Hat Linux Desktop" )
+			PLATFORM=RHED
+			VERSION=`grep "$OSName" $1 | sed 's/[^0-9]*//g'`
+		;;
+
+		"Red Hat Enterprise Linux Server" | "Red Hat Enterprise Linux ES" )
+			PLATFORM=RHEL
+			if [ "$includePatchInfo" = "true" ]; then
+				VERSION=`grep "$OSName" $1 | sed  's/[^0-9]*//g'`
+			else
+				VERSION=`grep "$OSName" $1 | sed  's/\..*$//;s/[^0-9]*//g'`
+			fi
+		;;
+
+		"SUSE Linux Enterprise Desktop" )
+			PLATFORM=SLED
+			VERSION=`grep VERSION $1 | sed 's/[ \t]//g;s/.*=//'`
+			if [ "$includePatchInfo" = "true" ]; then
+				PATCH=`grep PATCH $1 | sed 's/[ \t]//g;s/.*=//'`
+			fi
+		;;
+
+		"SUSE LINUX Enterprise Server"|"SUSE Linux Enterprise Server")
+			PLATFORM=SLES
+			VERSION=`grep VERSION "$1" | sed 's/[ \t]//g;s/.*=//'`
+			if [ "$includePatchInfo" = "true" ]; then
+				PATCH=`grep PATCH $1 | sed 's/[ \t]//g;s/.*=//'`
+			fi
+		;;
+
+		"Fedora" )
+			PLATFORM=Fedora
+			VERSION=`grep "$OSName" $1 | sed 's/[^0-9]*//g'`
+		;;
+
+		"CentOS" )
+			PLATFORM=RHEL
+			if [ "$includePatchInfo" = "true" ]; then
+				VERSION=`grep "$OSName" $1 | sed  's/[^0-9]*//g'`
+			else
+				VERSION=`grep "$OSName" $1 | sed  's/\..*$//;s/[^0-9]*//g'`
+			fi
+		;;
+
+		"Ubuntu" )
+			PLATFORM=Ubuntu
+			VERSION=`grep "$OSName" $1 | sed 's/[^0-9]*//g'`
+		;;
+
+		* )
+			echo  "Error Unrecognized Linux OS."
+			;;
+
+		esac
+}
+
+
+
+# "Main" 
+
+# Parse Command Line options.
+while getopts ":poah" opt; do
+	case $opt in
+		p )
+		  includePatchInfo="true"
+		;;
+
+                o ) 
+                  osonly="true"
+                ;;
+        
+                a )
+                  archonly="true" 
+                ;;
+
+		h ) 
+			echo "usage: arch [-p] [-o] [-a]"
+            echo "   -p   Include patch level"
+            echo "   -o   Display only OS & Version e.g RHEL5"
+            echo "   -a   Display only arch e.g x86"
+
+			exit 1
+	esac
+done
+
+
+# Done Parsing options.
+
+case `uname -s` in
+
+	Linux )
+		if [ -r $SuSE_Release ]; then
+			GetLinuxInfo "$SuSE_Release"
+		elif [ -r $SUSE_Release ]; then
+			GetLinuxInfo "$SUSE_Release"
+		elif [ -r $RH_Release ]; then
+			GetLinuxInfo "$RH_Release"
+		elif [ -r $FED_Release ]; then
+			GetLinuxInfo "$FED_Release"
+                elif [ -r $Ubuntu_Release ]; then
+                        GetLinuxInfo "$Ubuntu_Release"
+		fi
+	;;
+
+	HP-UX )
+		VERSION=`uname -r`
+		PLATFORM=Hpux
+	;;
+
+	AIX )
+		VERSION=`oslevel | sed 's/\.//g;s/0//g'`
+		PLATFORM=Aix
+	;;
+
+	SunOS )
+		PLATFORM=Sol
+		VERSION=`uname -r | sed 's/[0-9]\.//'`
+	;;
+
+	Darwin )
+		PLATFORM=MacOS
+		if [ "$includePatchInfo" = "true" ]; then
+			VERSION=`sw_vers -productVersion | sed 's/[^0-9]*//g'`
+		else
+			VERSION=`sw_vers -productVersion | sed 's/\([0-9][0-9]\)\.\([0-9]\)\.\([0-9]\)/\1\2/;s/[^0-9]*//g'`
+		fi
+
+	;;
+
+	*)
+		echo "Unknown"
+		exit 0
+		;;
+
+	esac
+
+GetARCH
+
+if [ "$osonly" = "true" ]; then
+    echo ${PLATFORM}${VERSION}${PATCH}
+elif [ "$archonly" = "true" ]; then
+     echo ${ARCH}
+else
+    echo ${PLATFORM}${VERSION}${PATCH}${ARCH}
+fi

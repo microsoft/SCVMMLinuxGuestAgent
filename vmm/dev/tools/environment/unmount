@@ -1,0 +1,10 @@
+#!/bin/bash
+
+#set -x
+
+if [ $# -ne 1 ]; then
+    echo "usage: unmount <filesys> >"
+    exit 1
+fi
+
+sudo umount $1

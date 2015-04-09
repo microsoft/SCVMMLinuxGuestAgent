@@ -1,0 +1,79 @@
+#!/bin/bash
+#
+# Copyright (C) Microsoft Corporation. All rights reserved.
+#
+# adjust /etc/localtime link, and test result
+# 
+
+#Variables
+retcode=0
+thisscript=${0}
+PRIMARY_PATH=""
+ALT_PATH=""
+tzid=""
+
+#Include utilities script
+source $(dirname ${0})/utilities
+
+function usage {
+  WriteError "Invalid arguments provided" ${thisscript}
+  echo "Usage: $0 tzid=zoneid"
+}
+
+VALID_INPUT=0
+for arg in $@; do
+    set -- `echo ${arg} | tr '=' ' '`
+	case "$1" in
+	 tzid )
+	    tzid=$2
+	    VALID_INPUT=1
+	    ;;
+	 * )
+	    usage
+	    exit 1
+	 ;;
+	esac
+done
+
+if [ $VALID_INPUT == 0 ]
+then
+   usage
+   exit -1
+elif [ $VALID_INPUT == 1 ]
+then
+   WriteInfo "All inputs validated" ${thisscript}
+fi
+
+ZONE_DIR="/usr/share/zoneinfo"
+PRIMARY_PATH=`cat "$(dirname ${0})/tztable" |grep "^${tzid}," |cut -f2 -d,`
+ALT_PATH=`cat "$(dirname ${0})/tztable" |grep "^${tzid}," |cut -f3 -d,`
+
+if [ -f "${ZONE_DIR}/${PRIMARY_PATH}" ]; then
+    ZONE_PATH="${PRIMARY_PATH}"
+elif [ $ALT_PATH ]; then
+    WriteInfo "Primary path $PRIMARY_PATH not found, using alternate path" ${thisscript}
+    if [ -f "${ZONE_DIR}/${ALT_PATH}" ]; then
+        ZONE_PATH="${ALT_PATH}"
+    else
+        WriteError "unable to locate time zone file $ALT_PATH, ${thisscript} exiting with warning" ${thisscript}
+        exit 1
+    fi
+else
+    WriteError "unable to locate time zone file $PRIMARY_PATH, ${thisscript} exiting with warning" ${thisscript}
+    exit 1
+fi
+
+
+ZONE_PATH="${ZONE_DIR}/${ZONE_PATH}"
+
+cfgExec "ln -sf ${ZONE_PATH} /etc/localtime"  warning "Failed to link /etc/localtime to ${ZONE_PATH}"  ${thisscript} 
+
+rc=`ls -l /etc/localtime | grep -c $ZONE_PATH`
+if [ $rc -eq 0 ]; then
+   WriteError "Link of ${ZONE_PATH} to /etc/localtime failed" ${thisscript}
+   exit 1
+else
+   WriteInfo "Time zone successfully set to ${ZONE_PATH}" ${thisscript}
+   exit 0
+fi
+

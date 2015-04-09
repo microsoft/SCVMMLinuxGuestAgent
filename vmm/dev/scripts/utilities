@@ -1,0 +1,116 @@
+#!/bin/bash
+#
+# Copyright (C) Microsoft Corporation. All rights reserved.
+#
+# Utility functions shared across all vmm configuration scripts
+#
+
+function WriteError {
+    WriteLog "Error" "$1" $2
+}
+
+function WriteWarning {
+    WriteLog "Warning" "$1" $2
+}
+
+function WriteInfo {
+    WriteLog "Info" "$1" $2
+}
+
+#
+# internal function to create log entry.  Timestamps with UTC
+#
+function WriteLog {
+   
+    #Read logfile path from /conf file.
+    conffile="`dirname ${3}`/../etc/scvmm.conf"
+    caller=`basename ${3}`
+    if [ -f "${conffile}" ]
+    then
+      # Parse log file
+      logfile=`cat "${conffile}" |grep PATH|cut -f2 -d:`
+    else
+      logfile="/var/opt/microsoft/scvmmguestagent/log/scvmm.log"
+    fi
+
+    if [ ! -d `dirname ${logfile}` ]
+    then
+      mkdir -p `dirname ${logfile}`
+    fi
+
+    echo -e `date -u '+%Y-%m-%dT%k:%M:%SZ'`"\t$1\t${caller}: $2"
+}
+
+
+function setRetCode {
+   oldRetCode=${retcode}
+   case ${1} in
+      1)
+	 #If return code was 0, and a warning is encountered, set return code to warning value
+	  if [ ${oldRetCode} = 0 ]
+	  then
+	    retcode=1  
+	  fi
+          ;;
+      -1)
+	 #If an error is encountered, set return code to error value
+          retcode=-1  
+          ;;
+   esac
+}
+
+function cfgExec {
+   #Function Args
+   # $1 = command to run
+   # $2 = severity (0 = info, 1 = warning, 2 = error)
+   # $3 = error message to log, if $? <> 0
+   # $4 = caller (argv[0])
+
+   #uncomment for debugging
+   #echo "Evaluating: ""$1"""
+
+   ERROR=$((eval ${1}) 2>&1)
+   rc=$?
+   echo ${ERROR}
+   if [ $rc != 0 ]; then
+        case $2 in
+            info)
+	        WriteInfo "${ERROR}" ${4}
+                WriteInfo "${3}" $4
+                ;;
+            warning)
+	        WriteWarning "${ERROR}" ${4}
+                WriteWarning "${3}" ${4}
+		setRetCode 1
+                ;;
+            error)
+	        WriteError "${ERROR}" ${4}
+                WriteError "${3}" ${4}
+		setRetCode -1
+		exit -1
+                ;;
+        esac
+   fi   
+
+}
+
+function GetDistroFamily {
+   if [ -e "/etc/debian_version" -o `uname -v |grep Ubuntu |wc -l` -eq 1 ] 
+   then 
+      distro="DEBIAN"
+   elif [ ! -e "/etc/sysconfig/networking" ] && [ ! -e "/etc/sysconfig/network-scripts" ]
+   then
+      distro="SUSE"
+   else
+      distro="RHEL"
+   fi
+}
+
+function GetRootHome {
+   roothome=`cat /etc/passwd |grep -e '^root' |cut -f6 -d:`
+   if [ -z "${roothome}" ]
+   then
+      roothome="/root"
+   fi
+
+}

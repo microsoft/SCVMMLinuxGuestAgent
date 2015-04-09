@@ -1,0 +1,30 @@
+#!/bin/bash
+
+username=$USER
+
+if [ $# -eq 1 ]; then
+	if [ "$1" = "-help" ]; then
+		echo "copykeys [ primary home directy ]"
+		exit 1
+	fi
+	srcdir=$1
+else
+	srcdir=/mnt/$username
+fi
+
+if [ ! -d $srcdir ]; then
+	echo "Error: cannot locate $srcdir"
+	exit 2
+fi
+
+if [ ! -d ~/.ssh ]; then
+	mkdir ~/.ssh
+	chmod 700 ~/.ssh
+fi
+
+if [ ! -f ~/.ssh/authorized_keys ]; then
+	touch ~/.ssh/authorized_keys
+	chmod 600 ~/.ssh/authorized_keys
+fi
+
+cat $srcdir/.ssh/id_dsa.pub >> ~/.ssh/authorized_keys

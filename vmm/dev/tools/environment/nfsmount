@@ -1,0 +1,46 @@
+#!/bin/bash
+
+#set -x
+
+if [ $# -ne 2 ]; then
+    echo "usage: nfsmount <server:/filesys> <mntpoint>"
+    exit 1
+fi
+
+OSTYPE=`~/bin/arch`
+err=0;
+
+case "$OSTYPE"  in
+
+	Aix* )
+		sudo mount -v nfs $1 $2
+		err=$?
+	;;
+
+	RHEL*|SLES* )
+		sudo mount -t nfs $1 $2
+	;;
+
+#	SLES* )
+#		sudo mount -v nfs $1 $2
+#		err=$?
+#	;;
+
+	Sol* )
+		sudo mount -F nfs $1 $2
+		err=$?
+	;;
+
+	HpuxB* )
+		sudo mount -F nfs $1 $2
+		err=$?
+	;;
+
+	*)
+		echo "No mount command available for " `~/bin/arch`
+		exit 99;
+	;;
+
+esac
+
+exit $err

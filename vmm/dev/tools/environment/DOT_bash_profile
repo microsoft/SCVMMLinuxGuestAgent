@@ -1,0 +1,18 @@
+# .bash_profile
+
+# Get the aliases and functions
+if [ -f ~/.bashrc ]; then
+        . ~/.bashrc
+fi
+
+# Check if tfproxy is running
+if [ -x /opt/tfprox/bin/tfprox ]; then
+    if ! ps -aef | grep -i tfprox | grep -v grep  > /dev/null; then
+            echo "Starting tfproxy..."
+            if ! sudo /opt/tfprox/bin/tfprox -b; then
+                    echo "Fatal error:  Unable to start tfproxy..."
+                    exit 3
+            fi
+    fi
+fi
+

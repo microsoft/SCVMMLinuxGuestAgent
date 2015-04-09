@@ -1,0 +1,80 @@
+#!/bin/bash
+#
+# Copyright (C) Microsoft Corporation. All rights reserved.
+#
+# Perform pre-configuration actions
+# 
+
+#Variables
+retcode=0
+distro="unknown"
+thisscript=${0}
+
+#Include utilities script
+source $(dirname ${0})/utilities
+
+DisableResolvConfUpdates(){
+  
+   if [ -x "/sbin/dhclient-script" ]
+   then
+      if [ ${distro} = "DEBIAN" ]
+      then 
+	 dhfile="/etc/dhcp3/dhclient-enter-hooks.d/nodnsupdate"
+      else
+	 if [ -d "/etc/dhcp" ]
+	 then
+	    dhfile="/etc/dhcp/dhclient-enter-hooks"
+	 else
+	    dhfile="/etc/dhclient-enter-hooks"
+	 fi
+      fi
+      WriteInfo "Creating dhclient enter hooks to disable resolv.conf overwrites in: ${dhfile}" ${thisscript}
+      echo "make_resolv_conf() { echo 'dhclient-script resolv.conf updates disabled by SC VMM'; }" > ${dhfile}
+      chmod 744 ${dhfile}
+   fi
+
+   if [ -e /etc/sysconfig/network/dhcp ]
+   then
+      WriteInfo "Setting DHCLIENT_MODIFY_RESOLV_CONF=no in /etc/sysconfig/network/dhcp" ${thisscript}
+      sed -i".bak" 's/^DHCLIENT_MODIFY_RESOLV_CONF=.*/DHCLIENT_MODIFY_RESOLV_CONF="no"/g' /etc/sysconfig/network/dhcp
+   fi
+
+   if [ -x "/sbin/resolvconf" ]
+   then 
+      WriteInfo "Disabling resolvconf updates to resolv.conf." ${thisscript}
+      /sbin/resolvconf --disable-updates
+   fi
+   # template shouldn't have a dns search suffix, if one exists, remove it before applying specialization
+   if [ -e /etc/resolv.conf ]
+   then
+       sed -i".bak" '/^search */d' /etc/resolv.conf
+   fi
+
+
+}
+
+#Flush Udev rules
+if [ -e /etc/udev/rules.d/70-persistent-net.rules ]
+then
+   WriteInfo "Deleting 70-persistent-net.rules" ${thisscript}
+   cfgExec  "rm /etc/udev/rules.d/70-persistent-net.rules --force"  error  "Failed to delete 70-persistent-net.rules"  ${thisscript}
+fi
+
+if [ -e /etc/udev/rules.d/30-net_persistent_names.rules ]
+then
+   WriteInfo "Deleting 30-net_persistent_names.rules" ${thisscript}
+   cfgExec  "rm 30-net_persistent_names.rules --force"  error  "Failed to delete 30-net_persistent_names.rules"  ${thisscript}
+fi
+
+#Regenerate ssh host keys
+WriteInfo "Regenerating ssh host keys" ${thisscript}
+	rm -rf /etc/ssh/ssh_host_*key*
+	ssh-keygen -t dsa -f /etc/ssh/ssh_host_dsa_key -N ''
+	ssh-keygen -t rsa -f /etc/ssh/ssh_host_rsa_key -N '' 
+
+GetDistroFamily
+
+DisableResolvConfUpdates
+
+exit ${retcode}
+

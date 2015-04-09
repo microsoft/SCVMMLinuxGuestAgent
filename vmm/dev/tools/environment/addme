@@ -1,0 +1,105 @@
+#/bin/bash
+
+#set -x 
+
+OS=`uname -s`
+mygid=7903
+myuid="<UID GOES HERE>"
+myuname="<USERNAME GOES HERE>"
+mygrpname=scxdev
+
+while [ $# -ne 0 ]; do
+	case "$1" in 
+		-uid )
+			myuid=$2
+			shift
+		;;
+
+		-uname )
+			myuname=$2
+			shift
+		;;
+
+		* )
+			echo "addme -uid <uid> -uname <username>"
+			exit 2
+		;;
+
+	esac
+
+	shift
+
+done
+
+myhome=/home/$myuname
+
+if [ "$myuid" = "<UID GOES HERE>" -o "$myuname" = "<USERNAME GOES HERE>" ]; then
+	echo "You need to modify the script with your information"
+	echo "or supply the information on the command line..."
+	exit 1
+fi
+
+# Override default for Solaris
+if [ "$OS" = "SunOS" ]; then
+	myhome=/export/home/$myuname
+fi
+
+# Is my group already here?
+grep :${mygid}: /etc/group > /dev/null
+
+if [ $? -eq 0 ]; then
+	echo "group already exists..."
+else
+	if [ "$OS" = "AIX" ]; then
+		mkgroup -A id=$mygid $mygrpname
+	else
+		groupadd -g $mygid $mygrpname
+	fi
+fi
+
+# Check for my username
+pwdentrybyname=`grep $myuname /etc/passwd`
+
+if [ -n "$pwdentry" ]; then
+
+	echo "Username already exists, checking uid."
+
+	// Get the entry by UID...
+	pwdentrybyuid=`grep $myuid /etc/passwd`
+
+	if [ -z "$pwentrybyuid" ] && ["$pwdentrybyname" != "pwdentrybyuid" ]; then
+		echo "uid already in use and it's not you..."
+		exit 2
+	fi
+fi
+
+
+case "$OS" in
+	"SunOS"|"AIX" )
+		useradd -g $mygid -u $myuid -d $myhome -s /bin/bash $myuname
+		usermod -G staff $myuname
+	;;
+
+	* )
+		useradd -g $mygrpname -u $myuid -d $myhome -s /bin/bash $myuname 
+		usermod -G users $myuname
+	;;
+esac
+
+
+# SLES9 seems to ignore the create directory step, for some reason..
+if [ ! -d $myhome ]; then
+	mkdir $myhome
+	if [ $? -ne 0 ]; then
+		echo "Unable to create home directory..."
+		exit 99
+	fi
+fi
+
+
+
+chown $myuname $myhome
+chgrp $mygrpname $myhome
+chmod 755 $myhome
+
+passwd $myuname

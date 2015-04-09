@@ -1,0 +1,8 @@
+#!/bin/bash
+
+if [ -f ~/.ssh/id_dsa.pub ]; then
+	echo "Your ssh keys appear to exist already..."
+	exit 1
+fi
+
+ssh-keygen -t dsa

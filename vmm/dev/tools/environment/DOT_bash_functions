@@ -1,0 +1,146 @@
+export LOCAL_VMM_DEV_FOLDER=~/vmm
+export S_HOSTNAME=`hostname | sed 's/\.scx\.com//'`
+
+
+if [ `arch` == Sol9sparc ]; then
+	TR=/usr/xpg4/bin/tr
+else
+	TR=tr
+fi
+
+
+# ======================= TFS Related Functions ====================
+
+wincred_to_upper()
+{
+	# Convert the values to upper case, it makes everything easier
+	export WINDOWS_DOMAIN=`echo $WINDOWS_DOMAIN | tr "[a-z]" "[A-Z]"`
+	export WINDOWS_USERNAME=`echo $WINDOWS_USERNAME | tr "[a-z]" "[A-Z]"`
+
+}
+
+tfs_activate_license()
+{
+    tf productkey -set:7W3RJ-4WX3R-BV8JM-FC8P7-3W7QX
+    tf eula -accept
+}
+
+cdm_tfs_setup_local()
+{
+    rm -rf ~/.teamprise;
+    rm -rf ~/.microsoft;
+
+	if [ -z "$WINDOWS_DOMAIN" -o -z "$WINDOWS_USERNAME" ]; then
+	    echo "Error:  Please set the WINDOWS_DOMAIN and/or WINDOWS_USERNAME variables"
+		echo "in your ~/.wincred file before attempting to configure TFS."
+		return 1
+	fi
+
+	wincred_to_upper;
+
+    tfs_activate_license;
+
+    tf profile -delete tfprox
+    tf profile -new -string:serverUrl=http://127.0.0.1:8080/tfs/cdm tfprox
+    tf profile -edit -string:userDomain=$WINDOWS_DOMAIN tfprox
+    tf profile -edit -string:userName=$WINDOWS_USERNAME tfprox
+    tf profile -edit -string:password=* tfprox
+    echo "Please enter the password for $WINDOWS_DOMAIN\\$WINDOWS_USERNAME"
+    tfpasswd $WINDOWS_DOMAIN $WINDOWS_USERNAME
+    sudo cp tfprox.passwd.$WINDOWS_DOMAIN.$WINDOWS_USERNAME /opt/tfprox/etc
+}
+
+tfs_create_workfold_local()
+{
+    if [ -z "${1}" -o -z "${2}" ]; then
+	echo "Usage: ${0} <server folder> <local folder>" 1>&2
+	return 1;
+    fi
+
+    echo "Removing old directory" ${2}
+    rm -rf ${2}
+
+    echo "Creating new directory" ${2}
+    mkdir -p ${2}
+
+    echo "Mapping server folder \"${1}\" at directory \"${2}\" ..."
+    tf workfold -map -workspace:"${S_HOSTNAME}" ${1} ${2}
+
+    echo "Getting sources"
+    cd ${2}
+    tf get
+}
+
+tfs_create_vmm_workspace_local()
+{
+    mkdir -p $LOCAL_VMM_DEV_FOLDER
+
+    echo "Creating workspace \"${S_HOSTNAME}\" ..."
+
+    tf -profile:tfprox workspace -new "${S_HOSTNAME}"
+    if [ $? -ne 0 ]; then
+		echo Error Creating workspace "${S_HOSTNAME}".
+		return 1
+	fi
+    
+    tfs_create_workfold_local $/CDM_SFE/Branches/OnPrem/Improvements/VMM_Xplat/OnPrem/VMMXplat/dev $LOCAL_VMM_DEV_FOLDER
+    # Tell user to Export the dev folder if it is not already exported.
+    #grep $LOCAL_VMM_DEV_FOLDER /etc/exports > /dev/null
+    #[ "$?" = "0" ] || export_folder $LOCAL_VMM_DEV_FOLDER
+}
+
+sshp()
+{
+    host=`grep -i $1 ~/.pbuild | head -n 1 | awk '{ print $3 }'`
+    if [ -n "$host" ]; then
+        ssh $host
+    else
+        echo "No host found."
+        return 1
+    fi
+
+}
+
+# Function: tfs_rebuild()
+#
+# Rebuilds & reinstalls TFS from source code
+
+tfs_rebuild()
+{
+    if [ "$1" == "" ]; then
+        echo "Usage: tfs_rebuild <version>" >&2
+        return 1
+    fi
+
+    # Verify that the source file exists
+
+    TFPROX_TAR_GZ=~/tfprox-$1.tar.gz
+    TFPROX_DIR=/tmp/tfprox-$1/
+    if [ ! -f $TFPROX_TAR_GZ ]; then
+        echo "File $TFPROX_TAR_GZ does not exist" >&2
+        return 1
+    fi
+
+    # Kill off tfprox if it's running - in a way that runs on all platforms
+
+    for i in `ps -ef | grep tfprox | grep -v grep | awk '{print $2}'`; do
+        echo "Killing process $i ..."
+        sudo /bin/kill -9 $i
+    done
+
+    # Unpack the tfprox distribution, rebuild it, and install it
+
+    cp $TFPROX_TAR_GZ /tmp
+    gunzip /tmp/tfprox-$1.tar.gz
+    ( cd /tmp; tar xf tfprox-$1.tar )
+    ( cd $TFPROX_DIR; ./configure; echo "Building tfprox ..."; make; echo "Installing tfprox ..."; sudo make install )
+    echo "Cleaning up ..."
+    rm -rf /tmp/tfprox-$1*
+
+    # Restart new TFS server
+
+    echo "Restarting TFS ..."
+    if ! sudo /opt/tfprox/bin/tfprox -b; then
+        echo "Fatal error:  Unable to start tfproxy..."
+    fi
+}

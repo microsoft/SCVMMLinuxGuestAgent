@@ -1,0 +1,13 @@
+#!/bin/bash
+
+for i in `cat ~/.pbuild | grep '^host' | awk '{ print $3 }'`
+do
+	echo -n "pinging $i.."
+	ping -c 5 $i > /dev/null
+	if [ $? -ne 0 ]; then
+		echo "FAILED."
+	else
+		echo "ok"
+	fi
+done
+

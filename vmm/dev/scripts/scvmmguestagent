@@ -1,0 +1,88 @@
+#!/bin/bash
+#
+# Copyright (C) Microsoft Corporation. All rights reserved.
+#
+# Start/Stop Microsoft System Center Virtual Machine Manager Agent
+#
+
+### BEGIN INIT INFO
+# Provides:          scvmmguestagent
+# Required-Start:    $network
+# Required-Stop:     $network
+# Default-Start:     3 5
+# Default-Stop:      0 1 2 6
+# Short-Description: Microsoft VMM Agent
+# Description:       Microsoft System Center Virtual Machine Manager Agent
+### END INIT INFO
+
+
+prog="scvmmguestagent.bin"
+SCVMM_HOME=<SCVMMHOME>
+SCVMMBIN=$SCVMM_HOME/bin
+
+
+start() {
+        echo -n $"Starting $prog: "
+
+    if [ ! -f $SCVMMBIN/$prog ]; then
+        echo "Cannot find $prog, exiting..."
+        return 1;
+    fi
+
+    if [ ! -x $SCVMMBIN/$prog ]; then
+        echo "$prog is not executable, exiting..."
+        return 1;
+    else
+        env SCVMM_HOME=<SCVMMHOME> $SCVMMBIN/$prog
+        return $?
+    fi
+}
+
+startnomount() {
+	  
+     echo -n $"Starting $prog with mount path ${1}"
+
+    if [ ! -f $SCVMMBIN/$prog ]; then
+        echo "Cannot find $prog, exiting..."
+        return 1;
+    fi
+
+    if [ ! -x $SCVMMBIN/$prog ]; then
+        echo "$prog is not executable, exiting..."
+        return 1;
+    else
+        env SCVMM_HOME=<SCVMMHOME> $SCVMMBIN/$prog mntpath="${1}"
+        return $?
+    fi
+}
+
+stop() {
+   echo -n $"Stopping $prog: "
+   progpid=`pgrep ${prog}`
+   if [ $progpid ]
+   then
+      kill $progpid
+   fi
+}
+
+
+case "$1" in
+    start)
+  	    start
+	;;
+	
+	startnomount)
+  	    startnomount ${2}
+	;;
+
+    stop)
+        stop
+	;;
+
+    *)
+        echo $"Usage: $0 {start|stop}"
+        exit 1
+    ;;
+esac
+
+
