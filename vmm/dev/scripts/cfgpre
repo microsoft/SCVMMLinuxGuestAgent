@@ -69,8 +69,7 @@ fi
 #Regenerate ssh host keys
 WriteInfo "Regenerating ssh host keys" ${thisscript}
 	rm -rf /etc/ssh/ssh_host_*key*
-	ssh-keygen -t dsa -f /etc/ssh/ssh_host_dsa_key -N ''
-	ssh-keygen -t rsa -f /etc/ssh/ssh_host_rsa_key -N '' 
+	ssh-keygen -A
 
 GetDistroFamily
 
